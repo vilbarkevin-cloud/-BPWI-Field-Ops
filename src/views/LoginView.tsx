@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Droplet, Lock, User, Loader2, Mail, Eye, EyeOff } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, query, collectionGroup, where, getDocs, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 interface LoginViewProps {
@@ -42,10 +42,47 @@ export function LoginView({ onLogin }: LoginViewProps) {
       if (isSignUp) {
         const userCred = await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPassword);
         await updateProfile(userCred.user, { displayName: trimmedDisplayName });
+        
+        let tenantUid = userCred.user.uid;
+        let role = trimmedEmail.endsWith('admin.com') ? 'admin' : 'tech';
+
+        let staffLinked = false;
+        try {
+          // Check if user is already listed in team management
+          const staffQuery = query(collectionGroup(db, 'staff'), where('email', '==', trimmedEmail));
+          const staffSnap = await getDocs(staffQuery);
+          
+          if (!staffSnap.empty) {
+              const staffDoc = staffSnap.docs[0];
+              tenantUid = staffDoc.ref.parent.parent?.id || userCred.user.uid;
+              role = staffDoc.data().role || role;
+              
+              // Link the staff record with the new user's UID
+              await updateDoc(staffDoc.ref, { uid: userCred.user.uid });
+              staffLinked = true;
+          } else {
+              // Check by name just in case
+              const staffNameQuery = query(collectionGroup(db, 'staff'), where('name', '==', trimmedDisplayName));
+              const staffNameSnap = await getDocs(staffNameQuery);
+              if (!staffNameSnap.empty) {
+                  const staffDoc = staffNameSnap.docs[0];
+                  tenantUid = staffDoc.ref.parent.parent?.id || userCred.user.uid;
+                  role = staffDoc.data().role || role;
+                  
+                  await updateDoc(staffDoc.ref, { uid: userCred.user.uid, email: trimmedEmail });
+                  staffLinked = true;
+              }
+          }
+        } catch (linkErr) {
+          console.error("Error linking staff:", linkErr);
+          // Proceed without linking if index is missing
+        }
+
         await setDoc(doc(db, "users", userCred.user.uid, "profile", "info"), {
-          role: trimmedEmail.endsWith('admin.com') ? 'admin' : 'tech',
+          role: role,
           email: trimmedEmail,
           displayName: trimmedDisplayName,
+          tenantUid: tenantUid,
           createdAt: new Date().toISOString()
         });
         // onLogin(finalUsername, userCred.user.uid); handled by App.tsx

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { db, auth } from "../lib/firebase";
-import { doc, setDoc, getDoc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, writeBatch, serverTimestamp, collection, getDocs } from "firebase/firestore";
 import { sanitizePayload } from "./dataSanitizer";
+import { get, set, update, keys, del } from "idb-keyval";
 
 export interface PendingItem {
   id: string;
@@ -25,7 +26,7 @@ export interface SyncConflict {
   remoteData: any;
 }
 
-export function useSyncQueue() {
+export function useSyncQueue(tenantUid?: string | null) {
   const [queueCount, setQueueCount] = useState(0);
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([]);
   const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
@@ -34,17 +35,27 @@ export function useSyncQueue() {
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const backoffDelayRef = useRef(2000);
 
-  const calculateQueue = useCallback(() => {
+  const getStoreData = async (key: string) => {
     try {
-      const rawActivities = localStorage.getItem("watsanActivities");
-      const rawTasks = localStorage.getItem("watsanTasks");
-      const rawIncidents = localStorage.getItem("watsanIncidents");
+      const data = await get(key);
+      return data || [];
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  };
+
+  const calculateQueue = useCallback(async () => {
+    try {
+      const parsedActivities = await getStoreData("watsanActivities");
+      const parsedTasks = await getStoreData("watsanTasks");
+      const parsedIncidents = await getStoreData("watsanIncidents");
+      
       let count = 0;
       let items: PendingItem[] = [];
 
-      if (rawActivities) {
-        const parsed = JSON.parse(rawActivities);
-        const pending = parsed.filter((a: any) => !a.isSynced || a.justSynced);
+      if (parsedActivities.length > 0) {
+        const pending = parsedActivities.filter((a: any) => !a.isSynced || a.justSynced);
         count += pending.filter((a: any) => !a.isSynced).length;
         items.push(
           ...pending.map((a: any) => ({
@@ -56,10 +67,9 @@ export function useSyncQueue() {
           })),
         );
       }
-      if (rawTasks) {
-        const parsedTasks = JSON.parse(rawTasks);
+      if (parsedTasks.length > 0) {
         const pending = parsedTasks.filter(
-          (t: any) => t.status === "completed" && (!t.isSynced || t.justSynced),
+          (t: any) => (!t.isSynced || t.justSynced),
         );
         count += pending.filter((t: any) => !t.isSynced).length;
         items.push(
@@ -72,8 +82,7 @@ export function useSyncQueue() {
           })),
         );
       }
-      if (rawIncidents) {
-        const parsedIncidents = JSON.parse(rawIncidents);
+      if (parsedIncidents.length > 0) {
         const pending = parsedIncidents.filter((i: any) => !i.isSynced || i.justSynced);
         count += pending.filter((i: any) => !i.isSynced).length;
         items.push(
@@ -94,7 +103,7 @@ export function useSyncQueue() {
   }, []);
 
   const toggleItemRetry = useCallback(
-    (id: string, type: "Activity" | "Task" | "Incident") => {
+    async (id: string, type: "Activity" | "Task" | "Incident") => {
       try {
         let storageKey = "";
         if (type === "Activity") storageKey = "watsanActivities";
@@ -103,10 +112,9 @@ export function useSyncQueue() {
 
         if (!storageKey) return;
 
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const updated = parsed.map((item: any) => {
+        await update(storageKey, (val: any) => {
+          if (!val) return val;
+          return val.map((item: any) => {
             if (item.id === id) {
               return {
                 ...item,
@@ -115,9 +123,8 @@ export function useSyncQueue() {
             }
             return item;
           });
-          localStorage.setItem(storageKey, JSON.stringify(updated));
-          calculateQueue();
-        }
+        });
+        calculateQueue();
       } catch (e) {
         console.error(e);
       }
@@ -126,7 +133,7 @@ export function useSyncQueue() {
   );
 
   const resolveConflict = useCallback(async (id: string, action: 'mine' | 'theirs' | 'merge', mergedData?: any) => {
-    const currentUid = auth.currentUser?.uid;
+    const currentUid = tenantUid || auth.currentUser?.uid;
     if (!currentUid) return;
 
     const conflictIndex = syncConflicts.findIndex(c => c.id === id);
@@ -162,12 +169,10 @@ export function useSyncQueue() {
       else if (conflict.type === "Incident") storageKey = "watsanIncidents";
 
       if (storageKey) {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const updated = parsed.map((item: any) => item.id === id ? finalData : item);
-          localStorage.setItem(storageKey, JSON.stringify(updated));
-        }
+        await update(storageKey, (val: any) => {
+           if (!val) return val;
+           return val.map((item: any) => item.id === id ? finalData : item);
+        });
       }
 
       setSyncConflicts(prev => prev.filter(c => c.id !== id));
@@ -175,23 +180,21 @@ export function useSyncQueue() {
     } catch (e) {
       console.error("Error resolving conflict", e);
     }
-  }, [syncConflicts, calculateQueue]);
+  }, [syncConflicts, calculateQueue, tenantUid]);
 
-  const clearCompleted = useCallback(() => {
-    ["watsanActivities", "watsanTasks", "watsanIncidents"].forEach((key) => {
-      const raw = localStorage.getItem(key);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const updated = parsed.map((item: any) => {
-          if (item.justSynced) {
-            const { justSynced, ...rest } = item;
-            return rest;
-          }
-          return item;
-        });
-        localStorage.setItem(key, JSON.stringify(updated));
-      }
-    });
+  const clearCompleted = useCallback(async () => {
+    for (const key of ["watsanActivities", "watsanTasks", "watsanIncidents"]) {
+       await update(key, (val: any) => {
+          if (!val) return val;
+          return val.map((item: any) => {
+             if (item.justSynced) {
+               const { justSynced, ...rest } = item;
+               return rest;
+             }
+             return item;
+          });
+       });
+    }
     calculateQueue();
   }, [calculateQueue]);
 
@@ -203,7 +206,7 @@ export function useSyncQueue() {
     let hasError = false;
     let newConflicts: SyncConflict[] = [];
 
-    const currentUid = auth.currentUser?.uid;
+    const currentUid = tenantUid || auth.currentUser?.uid;
     if (!currentUid) {
       setIsSyncing(false);
       setSyncProgress(null);
@@ -215,12 +218,10 @@ export function useSyncQueue() {
     let processed = 0;
 
     // Process Tasks
-    const rawTasks = localStorage.getItem("watsanTasks");
-    if (rawTasks) {
-      const parsed = JSON.parse(rawTasks);
-      const toSync = parsed.filter(
-        (t: any) =>
-          t.status === "completed" && !t.isSynced && t.autoRetry !== false,
+    const parsedTasks = await getStoreData("watsanTasks");
+    if (parsedTasks.length > 0) {
+      const toSync = parsedTasks.filter(
+        (t: any) => !t.isSynced && t.autoRetry !== false,
       );
 
       for (let t of toSync) {
@@ -241,7 +242,24 @@ export function useSyncQueue() {
             if (t.photoUrl) deltaPayload.photoUrl = t.photoUrl;
             if (t.notes) deltaPayload.notes = t.notes;
             if (t.usedParts) deltaPayload.consumedParts = t.usedParts;
-            if (t.usedParts) deltaPayload.usedParts = t.usedParts; // Keep both just in case
+            if (t.usedParts) deltaPayload.usedParts = t.usedParts;
+            // Also merge any core fields in case it's a new task
+            if (t.title) deltaPayload.title = t.title;
+            if (t.area) deltaPayload.area = t.area;
+            if (t.location) deltaPayload.location = t.location;
+            if (t.priority) deltaPayload.priority = t.priority;
+            if (t.deadline) deltaPayload.deadline = t.deadline;
+            if (t.description) deltaPayload.description = t.description;
+            if (t.assignedTo) deltaPayload.assignedTo = t.assignedTo;
+            if (t.linkedActivity) deltaPayload.linkedActivity = t.linkedActivity;
+            if (t.joNumber) deltaPayload.joNumber = t.joNumber;
+            if (t.accountNumber) deltaPayload.accountNumber = t.accountNumber;
+            if (t.accountName) deltaPayload.accountName = t.accountName;
+            if (!snap.exists()) {
+               deltaPayload.createdAt = serverTimestamp();
+               deltaPayload.userId = currentUid;
+               deltaPayload.type = "task";
+            }
 
             batch.set(docRef, sanitizePayload(deltaPayload), { merge: true });
             batchHasOperations = true;
@@ -255,7 +273,7 @@ export function useSyncQueue() {
         processed++;
       }
 
-      const synced = parsed.map((t: any) => {
+      const synced = parsedTasks.map((t: any) => {
         const corresponding = toSync.find((syncTask: any) => syncTask.id === t.id);
         if (corresponding && corresponding.isSynced) {
           return { ...t, isSynced: true, justSynced: true };
@@ -264,16 +282,15 @@ export function useSyncQueue() {
       });
 
       if (toSync.length > 0) {
-        localStorage.setItem("watsanTasks", JSON.stringify(synced));
+        await set("watsanTasks", synced);
         updated = true;
       }
     }
 
     // Process Activities
-    const rawActivities = localStorage.getItem("watsanActivities");
-    if (rawActivities) {
-      const parsed = JSON.parse(rawActivities);
-      const toSync = parsed.filter(
+    const parsedActivities = await getStoreData("watsanActivities");
+    if (parsedActivities.length > 0) {
+      const toSync = parsedActivities.filter(
         (a: any) => !a.isSynced && a.autoRetry !== false,
       );
       
@@ -291,7 +308,7 @@ export function useSyncQueue() {
               ...rest,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            }));
+            }), { merge: true });
             batchHasOperations = true;
             a.isSynced = true;
             a.justSynced = true;
@@ -303,7 +320,7 @@ export function useSyncQueue() {
         processed++;
       }
 
-      const synced = parsed.map((a: any) => {
+      const synced = parsedActivities.map((a: any) => {
          const corresponding = toSync.find((syncAct: any) => syncAct.id === a.id);
          if (corresponding && corresponding.isSynced) {
            return { ...a, isSynced: true, justSynced: true };
@@ -312,16 +329,15 @@ export function useSyncQueue() {
       });
 
       if (toSync.length > 0) {
-        localStorage.setItem("watsanActivities", JSON.stringify(synced));
+        await set("watsanActivities", synced);
         updated = true;
       }
     }
 
     // Process Incidents
-    const rawIncidents = localStorage.getItem("watsanIncidents");
-    if (rawIncidents) {
-      const parsed = JSON.parse(rawIncidents);
-      const toSync = parsed.filter(
+    const parsedIncidents = await getStoreData("watsanIncidents");
+    if (parsedIncidents.length > 0) {
+      const toSync = parsedIncidents.filter(
         (i: any) => !i.isSynced && i.autoRetry !== false,
       );
 
@@ -339,7 +355,7 @@ export function useSyncQueue() {
               ...rest,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
-            }));
+            }), { merge: true });
             batchHasOperations = true;
             i.isSynced = true;
             i.justSynced = true;
@@ -351,7 +367,7 @@ export function useSyncQueue() {
         processed++;
       }
 
-      const synced = parsed.map((i: any) => {
+      const synced = parsedIncidents.map((i: any) => {
          const corresponding = toSync.find((syncInc: any) => syncInc.id === i.id);
          if (corresponding && corresponding.isSynced) {
            return { ...i, isSynced: true, justSynced: true };
@@ -360,7 +376,7 @@ export function useSyncQueue() {
       });
 
       if (toSync.length > 0) {
-        localStorage.setItem("watsanIncidents", JSON.stringify(synced));
+        await set("watsanIncidents", synced);
         updated = true;
       }
     }
@@ -388,14 +404,42 @@ export function useSyncQueue() {
     setIsSyncing(false);
     setTimeout(() => setSyncProgress(null), 1000);
     return !hasError;
-  }, [calculateQueue, queueCount]);
+  }, [calculateQueue, queueCount, tenantUid]);
+
+  const validateCache = useCallback(async () => {
+     // Validate against Firestore to clean up orphaned entries
+     const currentUid = tenantUid || auth.currentUser?.uid;
+     if (!currentUid || !navigator.onLine) return;
+     
+     try {
+        const parsedTasks = await getStoreData("watsanTasks");
+        if (parsedTasks.length > 0) {
+           // We only want to clean up tasks that are marked synced but no longer exist remotely,
+           // or we can just drop any task that we try to sync but it throws a specific error.
+           // Since the request asks to "compare locally cached pending items against the Firestore collection schema to detect and clean up orphaned entries", we can just fetch and remove orphans.
+           const snapshot = await getDocs(collection(db, `users/${currentUid}/tasks`));
+           const remoteIds = new Set(snapshot.docs.map(d => d.id));
+           const validTasks = parsedTasks.filter((t: any) => !t.isSynced || remoteIds.has(t.id));
+           if (validTasks.length !== parsedTasks.length) {
+              await set("watsanTasks", validTasks);
+           }
+        }
+     } catch(e) {
+       console.error("Error validating cache:", e);
+     }
+  }, [tenantUid]);
 
   useEffect(() => {
     calculateQueue();
+    // Validate cache on load
+    validateCache();
+
     // Re-check periodically or on storage event
     const interval = setInterval(calculateQueue, 30000);
-    window.addEventListener("storage", calculateQueue);
-
+    
+    // We can't rely on 'storage' event for IndexedDB the same way we do for localStorage.
+    // We should poll or use BroadcastChannel for multi-tab sync if strictly needed.
+    
     // Auto-sync when coming online
     const handleOnline = () => {
       backoffDelayRef.current = 2000;
@@ -405,10 +449,9 @@ export function useSyncQueue() {
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener("storage", calculateQueue);
       window.removeEventListener("online", handleOnline);
     };
-  }, [calculateQueue, syncData, isSyncing]);
+  }, [calculateQueue, syncData, isSyncing, validateCache]);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -438,11 +481,27 @@ export function useSyncQueue() {
     return () => clearTimeout(timeoutId);
   }, [queueCount, isSyncing, syncData]);
 
+  // Expose a helper to add to queue from any component
+  const enqueueAction = useCallback(async (store: string, item: any) => {
+     await update(store, (val: any) => {
+        const items = val || [];
+        // replace if exists
+        const idx = items.findIndex((i: any) => i.id === item.id);
+        if (idx >= 0) {
+          items[idx] = item;
+        } else {
+          items.push(item);
+        }
+        return items;
+     });
+     calculateQueue();
+  }, [calculateQueue]);
+
   return {
     queueCount,
     pendingItems,
     syncConflicts,
-    setSyncConflicts, // Extracted for mock injection if testing
+    setSyncConflicts,
     refreshQueue: calculateQueue,
     syncData,
     resolveConflict,
@@ -450,6 +509,8 @@ export function useSyncQueue() {
     isSyncing,
     clearCompleted,
     syncProgress,
+    enqueueAction,
   };
 }
+
 

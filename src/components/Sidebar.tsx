@@ -35,6 +35,7 @@ export type Tab =
   | "analytics"
   | "attendance"
   | "inventory"
+  | "customers"
   | "trip-tickets"
   | "live-map"
   | "chlorination"
@@ -90,6 +91,11 @@ export function Sidebar({
       icon: <Factory className="w-4 h-4" />,
     },
     {
+      id: "customers",
+      label: "Customers",
+      icon: <Users className="w-4 h-4" />,
+    },
+    {
       id: "inventory",
       label: "Inventory (Beta)",
       icon: <PackageSearch className="w-4 h-4" />,
@@ -122,7 +128,6 @@ export function Sidebar({
       id: "settings",
       label: "Settings",
       icon: <Settings className="w-4 h-4" />,
-      hidden: !isAdmin,
     },
   ];
 
@@ -138,7 +143,7 @@ export function Sidebar({
 
       {/* Sidebar sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-screen w-64 border-r border-outline-variant flex flex-col z-50 transition-transform duration-300 ease-in-out md:translate-x-0 bg-white/80 backdrop-blur-md ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed top-0 left-0 h-screen w-64 border-r border-outline-variant flex flex-col z-50 transition-transform duration-300 ease-in-out md:translate-x-0 bg-surface/80 backdrop-blur-md ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="p-6 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">

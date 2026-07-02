@@ -218,7 +218,7 @@ export function TripTicketView({ isOnline = true, currentUid, currentUser, setAc
     // Save signature if not empty
     let finalSignature = signature;
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
-       finalSignature = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
+       finalSignature = sigCanvas.current.getCanvas().toDataURL('image/png');
     }
     
     const newTicket: any = {

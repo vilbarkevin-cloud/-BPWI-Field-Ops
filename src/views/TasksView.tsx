@@ -36,6 +36,8 @@ import {
   serverTimestamp,
   getDocs,
   where,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { defaultStaff as dataStoreDefaultStaff } from "../lib/dataStore";
 import { ACTIVITY_TYPES } from "../lib/activityTypes";
@@ -43,6 +45,7 @@ import { useAdminRole } from "../hooks/useAdminRole";
 import { haptics } from "../utils/haptics";
 
 import { useSyncQueue } from "../utils/useSyncQueue";
+import { PrintableMeterTest } from "../components/PrintableMeterTest";
 import { compressImage } from "../utils/imageProcessor";
 
 export type TaskPriority = "high" | "medium" | "low";
@@ -52,7 +55,10 @@ export interface Task {
   id: string;
   title: string;
   priority: TaskPriority;
-  location: string;
+  location: string; // Legacy combined location
+  facility?: string;
+  site?: string;
+  blockLot?: string;
   deadline: string;
   estimatedHours?: number;
   completedAt?: string; // To track efficiency
@@ -76,22 +82,27 @@ const defaultTasks: Task[] = [];
 
 interface TasksViewProps {
   setActiveTab?: any;
+  onSwitchToAdhoc?: (activityType?: string, taskContext?: Task) => void;
   currentUser?: string | null;
   currentUid?: string | null;
   globalSearchQuery?: string;
 }
 
-export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQuery = "" }: TasksViewProps) {
+export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdhoc, globalSearchQuery = "" }: TasksViewProps) {
   const isAdmin = useAdminRole(currentUid);
 
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskLimit, setTaskLimit] = useState(50);
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
   const [staffList, setStaffList] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState(globalSearchQuery);
 
-  const { syncData, isSyncing } = useSyncQueue();
+  const { syncData, isSyncing, enqueueAction } = useSyncQueue(currentUid);
   const [isPulling, setIsPulling] = useState(false);
   const [pullY, setPullY] = useState(0);
+  const [reprintData, setReprintData] = useState<any>(null);
+  const printRef = useRef<HTMLDivElement>(null);
   
   const startY = useRef(0);
   const currentY = useRef(0);
@@ -132,6 +143,53 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
     setSearchQuery(globalSearchQuery);
   }, [globalSearchQuery]);
   const { showToast } = useToast();
+
+  const handleReprintTask = async (task: Task) => {
+    if (!currentUid) return;
+    try {
+      // Fetch ALL activities in case 'type' is not exactly 'meter_test' or something
+      const q1 = query(
+        collection(db, `users/${currentUid}/activities`)
+      );
+      
+      const snapshot = await getDocs(q1);
+      let activities = snapshot.docs.map(d => ({ id: d.id, ...d.data() as any }));
+      
+      // Filter for meter_test locally just to be sure
+      activities = activities.filter(a => a.type === 'meter_test');
+      
+      activities.sort((a, b) => {
+          const t1 = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.date || 0).getTime();
+          const t2 = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.date || 0).getTime();
+          return t2 - t1;
+      });
+
+      let match = activities.find(a => 
+        (a.taskId && a.taskId === task.id) ||
+        (task.accountNumber && a.details?.accountNumber && a.details?.accountNumber.includes(task.accountNumber)) ||
+        (task.accountName && a.details?.testAccountName && a.details?.testAccountName.includes(task.accountName))
+      );
+
+      // Fallback: If no strict match, check if there's any meter test on the same day for this user
+      if (!match && activities.length > 0) {
+        match = activities[0];
+      }
+
+      if (match) {
+        setReprintData(match);
+        setTimeout(() => {
+          window.print();
+        }, 500);
+      } else {
+        // Log to console so we can see what activities were returned
+        console.log("No meter_test activities found. Total activities fetched: ", snapshot.docs.length);
+        alert(`No corresponding meter test form found. (Total activities: ${snapshot.docs.length})`);
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Error finding form", "error");
+    }
+  };
   const { isLowDataMode } = useNetworkInfo();
 
   useProximityAlert(tasks);
@@ -230,12 +288,17 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
   useEffect(() => {
     if (!currentUid) return;
 
-    const q = query(collection(db, `users/${currentUid}/activities`), where("type", "==", "task"));
+    const q = query(
+      collection(db, `users/${currentUid}/tasks`),
+      orderBy("createdAt", "desc"),
+      limit(taskLimit)
+    );
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       // If collection is initially empty, seed with defaultTasks
-      if (snapshot.empty) {
+      if (snapshot.empty && taskLimit === 50) {
         defaultTasks.forEach(async (dt) => {
-          const taskDocRef = doc(db, `users/${currentUid}/activities`, dt.id);
+          const taskDocRef = doc(db, `users/${currentUid}/tasks`, dt.id);
           try {
             await setDoc(taskDocRef, {
               userId: currentUid,
@@ -278,9 +341,13 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
             joNumber: data.joNumber,
             accountNumber: data.accountNumber,
             accountName: data.accountName,
+            facility: data.facility,
+            site: data.site,
+            blockLot: data.blockLot,
           } as Task;
         });
         setTasks(fetchedTasks);
+        setHasMoreTasks(snapshot.docs.length === taskLimit);
       }
     }, (error: any) => {
       if (error.code === 'permission-denied') return;
@@ -288,7 +355,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
     });
 
     return () => unsubscribe();
-  }, [currentUid]);
+  }, [currentUid, taskLimit]);
 
   useEffect(() => {
     const storedStaff = localStorage.getItem("watsanStaff");
@@ -319,31 +386,40 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
       return;
     }
     const taskId = `task-${Date.now()}`;
-    const taskDocRef = doc(db, `users/${currentUid}/activities`, taskId);
+    const taskDocRef = doc(db, `users/${currentUid}/tasks`, taskId);
+
+    const taskPayload = {
+      userId: currentUid,
+      type: "task",
+      date: new Date().toISOString(),
+      area: newTask.location,
+      title: newTask.title,
+      priority: newTask.priority,
+      location: newTask.location,
+      deadline: newTask.deadline || "No deadline",
+      estimatedHours: newTask.estimatedHours || null,
+      description: newTask.description || "",
+      assignedTo: newTask.assignedTo || "Unassigned",
+      status: "pending",
+      linkedActivity: newTask.linkedActivity || "",
+      joNumber: newTask.joNumber || "",
+      accountNumber: newTask.accountNumber || "",
+      accountName: newTask.accountName || "",
+      isSynced: navigator.onLine,
+    };
 
     try {
-      await setDoc(taskDocRef, {
-        userId: currentUid,
-        type: "task",
-        date: new Date().toISOString(),
-        area: newTask.location,
-        title: newTask.title,
-        priority: newTask.priority,
-        location: newTask.location,
-        deadline: newTask.deadline || "No deadline",
-        estimatedHours: newTask.estimatedHours || null,
-        description: newTask.description || "",
-        assignedTo: newTask.assignedTo || "Unassigned",
-        status: "pending",
-        linkedActivity: newTask.linkedActivity || "",
-        joNumber: newTask.joNumber || "",
-        accountNumber: newTask.accountNumber || "",
-        accountName: newTask.accountName || "",
-        isSynced: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      showToast("Task created successfully", "success");
+      if (navigator.onLine) {
+        await setDoc(taskDocRef, {
+           ...taskPayload,
+           createdAt: serverTimestamp(),
+           updatedAt: serverTimestamp(),
+        });
+        showToast("Task created successfully", "success");
+      } else {
+        await enqueueAction("watsanTasks", { id: taskId, ...taskPayload, isSynced: false, createdAt: new Date().toISOString() });
+        showToast("Offline: Task queued for synchronization", "warning");
+      }
       setIsModalOpen(false);
       setNewTask({
         title: "",
@@ -509,7 +585,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
 
     (async () => {
       try {
-        const taskRef = doc(db, `users/${currentUid}/activities`, id);
+        const taskRef = doc(db, `users/${currentUid}/tasks`, id);
         const updates: any = {
           status: newStatus,
           isSynced: navigator.onLine,
@@ -557,7 +633,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
           }
           showToast(
             !navigator.onLine
-              ? "Offline: Task completed. Saved in Sync Queue."
+              ? "Offline: Task completed. Queued for synchronization."
               : "Task completed and synced successfully!",
             "success",
           );
@@ -686,207 +762,25 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
               </p>
 
               {task.status !== "completed" && (
-                <>
-                  <label className="font-label-md text-on-surface-variant flex items-center justify-between mb-2">
-                    <span>Accomplishment Report</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleVoiceRecord(task.id);
-                      }}
-                      className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors shadow-sm ${
-                        isRecording === task.id
-                          ? "bg-error text-white animate-pulse"
-                          : "bg-surface-variant hover:bg-outline-variant/30 text-on-surface-variant"
-                      }`}
-                    >
-                      {isRecording === task.id ? (
-                        <>
-                          <MicOff className="w-3.5 h-3.5" />
-                          Stop Recording
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-3.5 h-3.5" />
-                          Record Voice Note
-                        </>
-                      )}
-                    </button>
-                  </label>
-                  <textarea
-                    className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 text-body-md focus:ring-2 focus:ring-primary focus:outline-none min-h-[120px]"
-                    placeholder="Enter detailed technical notes or use voice recording..."
-                    value={taskNotes[task.id] || ""}
-                    onChange={(e) => setTaskNotes(prev => ({ ...prev, [task.id]: e.target.value }))}
-                    onClick={(e) => e.stopPropagation()}
-                  ></textarea>
-                </>
-              )}
-            </div>
-            <div className="space-y-4">
-              {task.status === "pending" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    updateTaskStatus(task.id, "in-progress");
-                  }}
-                  className="w-full bg-primary-container text-on-primary-container py-3 rounded-lg font-label-md flex items-center justify-center gap-2 hover:opacity-90 transition-all font-semibold"
-                >
-                  <Play className="w-[18px] h-[18px]" />
-                  Start Task
-                </button>
-              )}
-
-              {task.status === "in-progress" && (
-                <>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="font-label-md text-on-surface-variant block">
-                        Media Documentation *
-                      </label>
-                      {taskPhotos[task.id] ? (
-                        <div className="relative w-full h-32 rounded-lg overflow-hidden border border-outline-variant">
-                          <img
-                            src={taskPhotos[task.id]}
-                            alt="Task Completion"
-                            className="w-full h-full object-cover"
-                          />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTaskPhotos((prev) => {
-                                const n = { ...prev };
-                                delete n[task.id];
-                                return n;
-                              });
-                            }}
-                            className="absolute top-2 right-2 p-1 bg-black/50 hover:bg-black/70 text-white rounded-full transition"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <label className="w-full h-32 border-2 border-dashed border-outline-variant rounded-lg flex flex-col items-center justify-center text-on-surface-variant bg-surface hover:bg-surface-container-low transition-colors cursor-pointer">
-                          <Camera className="w-6 h-6 mb-1" />
-                          <span className="text-label-sm">
-                            Upload Completion Photo
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="hidden"
-                            onChange={(e) => handlePhotoUpload(task.id, e)}
-                          />
-                        </label>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="font-label-md text-on-surface-variant block">
-                        Parts / Materials Used
-                      </label>
-                      {taskParts[task.id]?.map((part, idx) => (
-                        <div key={idx} className="flex gap-2 items-center mb-2">
-                          <span className="flex-1 text-sm">
-                            {inventoryItems.find((i) => i.id === part.itemId)
-                              ?.name || "Unknown Part"}
-                          </span>
-                          <span className="text-sm font-semibold text-on-surface-variant">
-                            Qty: {part.quantity}
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAddPart(task.id, part.itemId, 0);
-                            }}
-                            className="p-1 text-error hover:bg-error/10 rounded-full"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex gap-2">
-                        <select
-                          id={`part-select-${task.id}`}
-                          className="form-input flex-1 py-1 text-sm"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value="">Select inventory item...</option>
-                          {inventoryItems.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name} ({item.currentStock} {item.unit} left)
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const sel = document.getElementById(
-                              `part-select-${task.id}`,
-                            ) as HTMLSelectElement;
-                            if (sel.value) {
-                              const qty = parseInt(
-                                prompt("Enter quantity used:", "1") || "0",
-                                10,
-                              );
-                              if (qty > 0) {
-                                haptics.tap();
-                                handleAddPart(task.id, sel.value, qty);
-                              }
-                              sel.value = "";
-                            }
-                          }}
-                          className="btn-secondary py-1 px-3 text-sm"
-                        >
-                          Add
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Task-to-Asset Digital Twin Linkage */}
-                    {((task.title + " " + (task.linkedActivity || "").replace(/_/g, " ")).toLowerCase().includes("leak repair")) && (
-                      <div className="space-y-2 mt-4 pt-4 border-t border-outline-variant">
-                        <label className="font-label-md text-on-surface-variant flex items-center gap-2">
-                          <ShieldAlert className="w-4 h-4 text-warning-dark" />
-                          Link to Physical Asset (Required)
-                        </label>
-                        <p className="text-xs text-on-surface-variant mb-2">Leak Repairs must be linked to a specific asset to maintain the service history twin.</p>
-                        <select
-                          className="form-input w-full py-2 text-sm"
-                          value={taskLinkedAsset[task.id] || ""}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            setTaskLinkedAsset(prev => ({...prev, [task.id]: e.target.value}));
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <option value="">-- Select Asset --</option>
-                          {inventoryItems.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex justify-end items-center mt-4 pt-4 border-t border-outline-variant">
-                    <button
-                      disabled={isSubmittingTask === task.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        haptics.success();
-                        updateTaskStatus(task.id, "completed");
-                      }}
-                      className="btn-primary"
-                    >
-                      {isSubmittingTask === task.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                      Submit Report
-                    </button>
-                  </div>
-                </>
+                <div className="bg-surface-container rounded-lg p-4 flex flex-col items-center justify-center text-center mt-4">
+                  <p className="text-body-md text-on-surface mb-4">
+                    Tasks are now completed by logging a Field Activity (Ad-Hoc).
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onSwitchToAdhoc) {
+                        const activityType = task.linkedActivity || (task.title ? task.title.toLowerCase().replace(/[\s-]/g, '_') : undefined);
+                        onSwitchToAdhoc(activityType, task);
+                      } else if (setActiveTab) {
+                        setActiveTab("activity");
+                      }
+                    }}
+                    className="btn-primary"
+                  >
+                    Complete via Field Activity
+                  </button>
+                </div>
               )}
 
               {task.status === "completed" && (
@@ -923,20 +817,33 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
                     </div>
                   )}
 
-                  <div className="flex flex-col gap-1 mt-4">
-                    <div className="flex items-center gap-2 text-primary font-semibold">
-                      <CheckCircle2 className="w-5 h-5" />
-                      Done
-                    </div>
-                    {task.completedAt && (
-                      <div className="text-xs text-on-surface-variant flex items-center gap-1.5 ml-7">
-                        <Clock className="w-3.5 h-3.5" />
-                        Completed by <span className="font-medium text-on-surface">{task.updatedBy || task.assignedTo || "User"}</span> at {
-                          new Date(task.completedAt).toLocaleString(undefined, { 
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-                          })
-                        }
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-primary font-semibold">
+                        <CheckCircle2 className="w-5 h-5" />
+                        Done
                       </div>
+                      {task.completedAt && (
+                        <div className="text-xs text-on-surface-variant flex items-center gap-1.5 ml-7">
+                          <Clock className="w-3.5 h-3.5" />
+                          Completed by <span className="font-medium text-on-surface">{task.updatedBy || task.assignedTo || "User"}</span> at {
+                            new Date(task.completedAt).toLocaleString(undefined, { 
+                              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                            })
+                          }
+                        </div>
+                      )}
+                    </div>
+                    {(task.linkedActivity === 'meter_test' || (task.title && task.title.toLowerCase().includes('meter test'))) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReprintTask(task);
+                        }}
+                        className="btn-primary text-xs px-3 py-1"
+                      >
+                        Reprint Form
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1098,12 +1005,17 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
           </div>
         )}
 
-        {filteredTasks.length > visibleCount && (
+        {(filteredTasks.length > visibleCount || (filteredTasks.length <= visibleCount && hasMoreTasks)) && (
           <div className="text-center pt-4">
             <button 
               onClick={() => {
                 haptics.tap();
-                setVisibleCount(v => v + 20);
+                if (filteredTasks.length > visibleCount) {
+                  setVisibleCount(v => v + 20);
+                }
+                if (visibleCount + 20 >= filteredTasks.length && hasMoreTasks) {
+                  setTaskLimit(limit => limit + 50);
+                }
               }}
               className="px-6 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface rounded-full transition-colors text-sm font-semibold"
             >
@@ -1400,6 +1312,51 @@ export function TasksView({ currentUser, currentUid, setActiveTab, globalSearchQ
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Hidden PDF Printable Test Area */}
+      {reprintData && (
+        <div className="hidden print:block">
+          <PrintableMeterTest
+            data={{
+              account: reprintData.details?.testAccountName || reprintData.details?.accountNumber || "",
+              date: new Date(reprintData.date).toLocaleDateString(),
+              projectAddress: `${reprintData.siteOrWell || reprintData.area} ${reprintData.blockLot ? "- " + reprintData.blockLot : ""}`,
+              natureOfTest: reprintData.details?.testNature || "",
+              paymentDetails: "",
+              meterBrand: reprintData.details?.meterBrand || "",
+              meterSerialNumber: reprintData.details?.meterSerialNumber || "",
+              volumeOfWater: 30, // 3 x 10
+              natureOfMeter: reprintData.details?.meterNature || "",
+              reading1_init: Number(reprintData.details?.currentReading || 0),
+              reading1_final: Number(reprintData.details?.reading1 || 0),
+              reading2_init: Number(reprintData.details?.reading1 || 0),
+              reading2_final: Number(reprintData.details?.reading2 || 0),
+              reading3_init: Number(reprintData.details?.reading2 || 0),
+              reading3_final: Number(reprintData.details?.reading3 || 0),
+              error1: (((Number(reprintData.details?.reading1 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.01) - 1) * 100,
+              error2: (((Number(reprintData.details?.reading2 || 0) - Number(reprintData.details?.reading1 || 0)) / 0.01) - 1) * 100,
+              error3: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.reading2 || 0)) / 0.01) - 1) * 100,
+              avgError: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100,
+              testingResults:
+                (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
+                  ? "Fast Moving"
+                  : (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
+                    ? "Slow Moving"
+                    : "Passed",
+              recommendation:
+                Math.abs((((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
+                  ? "Replace"
+                  : "Retain",
+              testedBy: (reprintData.staff || []).join(", "),
+              witnessedBy: reprintData.details?.witnessedBy || "",
+              witnessSignatureImg: reprintData.details?.witnessSignature || undefined,
+              checkedBy: "HERNAN TALAVERA",
+              finalDecision: "",
+            }}
+            ref={printRef}
+          />
         </div>
       )}
     </div>

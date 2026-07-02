@@ -1,3 +1,4 @@
+// force reload 2
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import {
@@ -46,6 +47,7 @@ import {
   collection,
   doc,
   setDoc,
+  getDoc,
   getDocs,
   query,
   updateDoc,
@@ -53,11 +55,14 @@ import {
   onSnapshot,
   where,
   writeBatch,
+  deleteDoc,
 } from "firebase/firestore";
 import { PrintableMeterTest, MeterTestData } from "../components/PrintableMeterTest";
 import { ACTIVITY_TYPES } from "../lib/activityTypes";
 import { TasksView } from "./TasksView";
 import { IncidentsView } from "./IncidentsView";
+import { useSyncQueue } from "../utils/useSyncQueue";
+import { useAdminRole } from "../hooks/useAdminRole";
 
 const initHistoryDB = async () => {
   return openDB("watsan-history-cache", 1, {
@@ -104,6 +109,7 @@ interface ActivityViewProps {
   currentUid?: string | null;
   setActiveTab?: (tab: any) => void;
   initialCategory?: "ad-hoc" | "task" | "incident";
+  currentUserRole?: string | null;
 }
 
 export function ActivityView({
@@ -112,16 +118,20 @@ export function ActivityView({
   currentUid,
   setActiveTab,
   initialCategory = "ad-hoc",
+  currentUserRole,
 }: ActivityViewProps) {
   const { isLowDataMode } = useNetworkInfo();
   const { showToast } = useToast();
   const [workCategory, setWorkCategory] = useState<"ad-hoc" | "task" | "incident">(initialCategory);
+  const { enqueueAction } = useSyncQueue(currentUid);
+  const isAdmin = useAdminRole(currentUid || null);
   
   useEffect(() => {
     setWorkCategory(initialCategory);
   }, [initialCategory]);
 
   const [pmsIdToComplete, setPmsIdToComplete] = useState<string | null>(null);
+  const [incidentContext, setIncidentContext] = useState<any>(null);
 
   useEffect(() => {
     const pendingPMS = localStorage.getItem("pendingPMSActivity");
@@ -144,6 +154,7 @@ export function ActivityView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const printRef = React.useRef<HTMLDivElement>(null);
+  const [reprintData, setReprintData] = useState<any>(null);
 
   const fileToBase64 = (file: File | Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -284,8 +295,13 @@ export function ActivityView({
   const [witnessSignature, setWitnessSignature] = useState<string | null>(null);
   const sigCanvas = useRef<SignatureCanvas>(null);
   const [testAccountName, setTestAccountName] = useState("");
+  const [contactNumber, setContactNumber] = useState("");
+  const [accountType, setAccountType] = useState("Residential");
+  const [accountStatus, setAccountStatus] = useState("Active");
   const [jobOrderNumber, setJobOrderNumber] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+  const [accountNumberError, setAccountNumberError] = useState("");
+  const [contactNumberError, setContactNumberError] = useState("");
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState("");
 
@@ -309,15 +325,40 @@ export function ActivityView({
   const [testNature, setTestNature] = useState<"Re-testing" | "Initial">("Re-testing");
   const [pastMeterBrands, setPastMeterBrands] = useState<string[]>([]);
 
-  const [truckPlateNo, setTruckPlateNo] = useState("");
+  const [selectedTripTicketId, setSelectedTripTicketId] = useState("");
+  const [vehicleType, setVehicleType] = useState("");
+  const [plateNumber, setPlateNumber] = useState("");
   const [driverName, setDriverName] = useState("");
-  const [tankeringTimeStart, setTankeringTimeStart] = useState("");
-  const [tankeringTimeEnd, setTankeringTimeEnd] = useState("");
-  const [sourceLocation, setSourceLocation] = useState("");
-  const [deliveryLocation, setDeliveryLocation] = useState("");
-  const [volumeDelivered, setVolumeDelivered] = useState("");
+  
+  const [haulingCycles, setHaulingCycles] = useState<any[]>([
+    {
+      id: Date.now().toString(),
+      sourceLocation: "",
+      loadingStartTime: "",
+      loadingEndTime: "",
+      volumeLoaded: "",
+      deliveryLocation: "",
+      injectionStartTime: "",
+      injectionEndTime: "",
+    }
+  ]);
 
+  const [tripTickets, setTripTickets] = useState<any[]>([]);
   const [customActivityTypes, setCustomActivityTypes] = useState<{id: string, label: string}[]>([]);
+
+  useEffect(() => {
+    if (!currentUid) return;
+    const q = query(collection(db, `users/${currentUid}/tripTickets`));
+    const unsub = onSnapshot(q, (snap) => {
+      const tickets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      tickets.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setTripTickets(tickets);
+    }, (error: any) => {
+      if (error.code === 'permission-denied') return;
+      console.error(error);
+    });
+    return () => unsub();
+  }, [currentUid]);
 
   useEffect(() => {
     if (!currentUid) return;
@@ -412,23 +453,23 @@ export function ActivityView({
       try {
         const q = query(
           collection(db, `users/${currentUid}/tasks`),
-          where("status", "==", "pending"), // Could also check assignedTo here, but doing it in memory is fine given no complex index needed
+          where("status", "in", ["pending", "in-progress"])
         );
         const snap = await getDocs(q);
         const tasks = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter(
             (t: any) =>
-              t.linkedActivity === selectedActivity &&
-              (t.assignedTo === currentUser || t.assignedTo === "Unassigned"),
-          ); // Filter for current activity and assignee
+              (t.linkedActivity === selectedActivity || (t.title && t.title.toLowerCase().replace(/[\s-]/g, '_') === selectedActivity)) &&
+              (isAdmin || t.assignedTo === currentUser || t.assignedTo === "Unassigned")
+          ); 
         setPendingTasks(tasks);
       } catch (err) {
         console.error("Error fetching linked tasks", err);
       }
     };
     fetchTasks();
-  }, [currentUid, selectedActivity, isOnline, currentUser]);
+  }, [currentUid, selectedActivity, isOnline, currentUser, isAdmin]);
 
   const handleTaskSelect = (taskId: string) => {
     setSelectedTaskId(taskId);
@@ -445,6 +486,42 @@ export function ActivityView({
       if (task.accountName) setTestAccountName(task.accountName);
     }
   };
+
+  const lastParsedAccount = useRef("");
+
+  useEffect(() => {
+    if (accountNumber && accountNumber.length === 12 && accountNumber !== lastParsedAccount.current) {
+      const project = accountNumber.slice(0, 3);
+      const phase = accountNumber.slice(3, 6);
+      const block = accountNumber.slice(6, 9);
+      const lot = accountNumber.slice(9, 12);
+      const formattedBlockLot = `Block ${block} Lot ${lot}`;
+      
+      setSelectedArea((prev) => {
+        if (!prev) return project;
+        if (lastParsedAccount.current && prev === lastParsedAccount.current.slice(0, 3)) return project;
+        return prev;
+      });
+      
+      setSelectedSiteOrWell((prev) => {
+        if (!prev) return phase;
+        if (lastParsedAccount.current && prev === lastParsedAccount.current.slice(3, 6)) return phase;
+        return prev;
+      });
+      
+      setBlockLot((prev) => {
+        if (!prev) return formattedBlockLot;
+        if (lastParsedAccount.current) {
+          const oldBlock = lastParsedAccount.current.slice(6, 9);
+          const oldLot = lastParsedAccount.current.slice(9, 12);
+          if (prev === `Block ${oldBlock} Lot ${oldLot}`) return formattedBlockLot;
+        }
+        return prev;
+      });
+      
+      lastParsedAccount.current = accountNumber;
+    }
+  }, [accountNumber]);
 
   useEffect(() => {
     if (!selectedSiteOrWell || !currentUid) return;
@@ -628,11 +705,35 @@ export function ActivityView({
     }
   }, [selectedArea, selectedActivity]);
 
+  const isOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (isOnlineRef.current && !isOnline && selectedActivity && !isSubmitting && !isSavingDraft) {
+      showToast("Connection lost. Auto-saving progress as draft...", "warning");
+      submitForm({ preventDefault: () => {} } as any, "in_progress");
+    }
+    isOnlineRef.current = isOnline;
+  }, [isOnline, selectedActivity, isSubmitting, isSavingDraft]);
+
   const submitForm = (
     e: React.FormEvent | React.MouseEvent,
     targetStatus: "completed" | "in_progress" = "completed",
   ) => {
     e.preventDefault();
+
+    setAccountNumberError("");
+    setContactNumberError("");
+
+    if (accountNumber && !/^[A-Za-z0-9]{12}$/.test(accountNumber)) {
+      setAccountNumberError("Account Number must be exactly 12 alphanumeric characters.");
+      showToast("Please correct the highlighted errors.", "error");
+      return;
+    }
+
+    if (contactNumber && !/^(09\d{9}|\+639\d{9})$/.test(contactNumber)) {
+      setContactNumberError("Contact Number must be a valid mobile format (e.g. 09123456789).");
+      showToast("Please correct the highlighted errors.", "error");
+      return;
+    }
 
     // Validation (Offline-First) - only validate strict requirements if completing
     if (targetStatus === "completed") {
@@ -789,8 +890,9 @@ export function ActivityView({
       // --- Save Activity ---
       const actId = `act-${Date.now()}`;
 
-      const activityData = {
+      const activityData: any = {
         userId: currentUid,
+        taskId: selectedTaskId || undefined,
         type: selectedActivity,
         area: selectedArea,
         siteOrWell: selectedSiteOrWell,
@@ -860,13 +962,11 @@ export function ActivityView({
             : {}),
           ...(isTankering
             ? {
-                truckPlateNo,
+                vehicleType,
+                plateNumber,
                 driverName,
-                tankeringTimeStart,
-                tankeringTimeEnd,
-                sourceLocation,
-                deliveryLocation,
-                volumeDelivered,
+                selectedTripTicketId,
+                haulingCycles,
               }
             : {}),
         },
@@ -879,6 +979,53 @@ export function ActivityView({
         activityData,
       ).catch(console.warn);
 
+      if (accountNumber) {
+        const customerData: any = {
+          accountNumber,
+          lastActivityDate: new Date().toISOString(),
+          lastActivityType: selectedActivity
+        };
+        if (testAccountName) customerData.accountName = testAccountName;
+        if (contactNumber) customerData.contactNumber = contactNumber;
+        if (accountStatus) customerData.status = accountStatus;
+        if (selectedArea) customerData.project = selectedArea;
+        if (selectedSiteOrWell) customerData.phaseSite = selectedSiteOrWell;
+        if (blockLot) customerData.blockLot = blockLot;
+        if (gpsLocation) customerData.gpsPosition = { latitude: gpsLocation.lat, longitude: gpsLocation.lng };
+        if (newMeterSerial || meterSerialNumber) customerData.meterSerialNumber = newMeterSerial || meterSerialNumber;
+        if (accountType) customerData.accountType = accountType;
+
+        setDoc(doc(db, `users/${currentUid}/customers`, accountNumber), customerData, { merge: true }).catch(console.warn);
+      }
+
+      if (isTankering && selectedTripTicketId) {
+        // Push the cycles to the selected trip ticket
+        const ttRef = doc(db, `users/${currentUid}/tripTickets`, selectedTripTicketId);
+        getDoc(ttRef).then(ttSnap => {
+          if (ttSnap.exists()) {
+            const currentLegs = ttSnap.data().legs || [];
+            const newLegs = haulingCycles.map((cycle, idx) => ({
+              id: `${Date.now()}-${idx}`,
+              date: new Date().toISOString().split('T')[0],
+              passengers: "Water Hauling Auto-Log",
+              purpose: "Water Delivery / Hauling",
+              departureTimeOffice: cycle.loadingStartTime,
+              destination: `${cycle.sourceLocation} -> ${cycle.deliveryLocation}`,
+              arrivalTimeDest: cycle.loadingEndTime,
+              departureTimeDest: cycle.injectionStartTime,
+              returnTimeOffice: cycle.injectionEndTime,
+              gasBalance: "",
+              gasPurchased: "",
+              gasTotal: "",
+              speedoBeg: "",
+              speedoEnd: "",
+              distance: ""
+            }));
+            updateDoc(ttRef, { legs: [...currentLegs, ...newLegs] }).catch(console.warn);
+          }
+        }).catch(console.warn);
+      }
+
       if (pmsIdToComplete && targetStatus === "completed") {
         updateDoc(doc(db, `users/${currentUid}/CalendarEvents`, pmsIdToComplete), {
           status: "completed",
@@ -890,18 +1037,12 @@ export function ActivityView({
 
       // Save locally if offline
       if (!isOnline) {
-        const rawActivities = localStorage.getItem("watsanActivities");
-        const activitiesQueue = rawActivities ? JSON.parse(rawActivities) : [];
-        activitiesQueue.push({
+        await enqueueAction("watsanActivities", {
           id: actId,
           ...activityData,
           isSynced: false,
           createdAt: new Date().toISOString(),
         });
-        localStorage.setItem(
-          "watsanActivities",
-          JSON.stringify(activitiesQueue),
-        );
       }
 
       let baseMsg =
@@ -911,8 +1052,8 @@ export function ActivityView({
       if (!isOnline) {
         baseMsg =
           targetStatus === "in_progress"
-            ? "Offline mode: Progress saved locally."
-            : "Offline mode: Report saved locally. Will sync when online.";
+            ? "Offline mode: Progress queued for synchronization."
+            : "Offline mode: Report queued for synchronization.";
       }
       const msg = baseMsg + linkedMsg;
       showToast(msg, "success");
@@ -994,6 +1135,13 @@ export function ActivityView({
       setLinkToBilling(false);
       setPhotosBase64([]);
       setPhotoDataSaved(0);
+      setSelectedTaskId("");
+      setJobOrderNumber("");
+      setAccountNumber("");
+      setTestAccountName("");
+      setContactNumber("");
+      setAccountType("Residential");
+      setAccountStatus("Active");
 
       // Reset newly added meter states
       setVisitCount(1);
@@ -1007,13 +1155,20 @@ export function ActivityView({
       setGensetCause("");
       setGensetRefillLevel("");
 
-      setTruckPlateNo("");
+      setVehicleType("");
+      setPlateNumber("");
       setDriverName("");
-      setTankeringTimeStart("");
-      setTankeringTimeEnd("");
-      setSourceLocation("");
-      setDeliveryLocation("");
-      setVolumeDelivered("");
+      setSelectedTripTicketId("");
+      setHaulingCycles([{
+        id: Date.now().toString(),
+        sourceLocation: "",
+        loadingStartTime: "",
+        loadingEndTime: "",
+        volumeLoaded: "",
+        deliveryLocation: "",
+        injectionStartTime: "",
+        injectionEndTime: "",
+      }]);
       setPmsIdToComplete(null);
     }
 
@@ -1089,6 +1244,21 @@ export function ActivityView({
     setNewActivityTypeName("");
     setIsAddingActivityType(false);
     setSelectedActivity(newId);
+  };
+
+  const handleDeleteActivityType = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUid) return;
+    try {
+      await deleteDoc(doc(db, `users/${currentUid}/activityTypes`, id));
+      showToast("Custom activity type deleted", "success");
+      if (selectedActivity === id) {
+        setSelectedActivity(ACTIVITY_TYPES[0].id);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to delete activity type", "error");
+    }
   };
 
   const combinedActivityTypes = [
@@ -1215,9 +1385,52 @@ export function ActivityView({
       </div>
 
       {workCategory === "task" ? (
-        <TasksView setActiveTab={setActiveTab} currentUser={currentUser || ""} currentUid={currentUid} />
+        <TasksView 
+          setActiveTab={setActiveTab} 
+          onSwitchToAdhoc={(activityType?: string, taskContext?: any) => {
+            setWorkCategory("ad-hoc");
+            if (activityType) {
+              setSelectedActivity(activityType);
+            }
+            if (taskContext) {
+              if (taskContext.joNumber) setJobOrderNumber(taskContext.joNumber);
+              if (taskContext.accountNumber) setAccountNumber(taskContext.accountNumber);
+              if (taskContext.accountName) setTestAccountName(taskContext.accountName);
+              
+              if (taskContext.facility) setSelectedArea(taskContext.facility);
+              if (taskContext.site) {
+                setSelectedSiteOrWell(taskContext.site);
+              } else if (taskContext.location) {
+                setSelectedSiteOrWell(taskContext.location);
+              }
+              if (taskContext.blockLot) setBlockLot(taskContext.blockLot);
+              
+              setSelectedTaskId(taskContext.id);
+            }
+          }}
+          currentUser={currentUser || ""} 
+          currentUid={currentUid} 
+        />
       ) : workCategory === "incident" ? (
-        <IncidentsView setActiveTab={setActiveTab} currentUid={currentUid} currentUser={currentUser} />
+        <IncidentsView 
+          setActiveTab={setActiveTab} 
+          currentUid={currentUid} 
+          currentUser={currentUser} 
+          isOnline={isOnline}
+          initialContext={incidentContext}
+          onSwitchToAdhoc={(activityType, context) => {
+            setWorkCategory("ad-hoc");
+            if (activityType) setSelectedActivity(activityType);
+            if (context) {
+              if (context.id && !context.joNumber) setJobOrderNumber(context.id);
+              if (context.joNumber) setJobOrderNumber(context.joNumber);
+              if (context.accountNumber) setAccountNumber(context.accountNumber);
+              if (context.facility) setSelectedArea(context.facility);
+              if (context.site) setSelectedSiteOrWell(context.site);
+              if (context.blockLot) setBlockLot(context.blockLot);
+            }
+          }}
+        />
       ) : (
       <form
         onSubmit={(e) => submitForm(e, "completed")}
@@ -1232,19 +1445,32 @@ export function ActivityView({
             <div className="flex overflow-x-auto pb-2 -mx-2 px-2 gap-2 hide-scrollbar snap-x">
               {combinedActivityTypes.map((act) => {
               const isSelected = selectedActivity === act.id;
+              const isCustom = act.id.startsWith('custom_');
+              const canDelete = isCustom && currentUserRole && (['admin', 'operations_manager'].includes(currentUserRole.toLowerCase()) || currentUserRole.toLowerCase().includes('head'));
+
               return (
-                <button
-                  key={act.id}
-                  type="button"
-                  onClick={() => setSelectedActivity(act.id)}
-                  className={`snap-start shrink-0 px-4 py-2 rounded-2xl border-2 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20 text-sm font-semibold whitespace-nowrap ${
-                    isSelected
-                      ? "bg-primary border-primary text-white shadow-md"
-                      : "bg-surface border-transparent hover:bg-surface-variant text-on-surface-variant"
-                  }`}
-                >
-                  {act.label}
-                </button>
+                <div key={act.id} className="relative group shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedActivity(act.id)}
+                    className={`snap-start px-4 py-2 rounded-2xl border-2 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20 text-sm font-semibold whitespace-nowrap ${
+                      isSelected
+                        ? "bg-primary border-primary text-white shadow-md"
+                        : "bg-surface border-transparent hover:bg-surface-variant text-on-surface-variant"
+                    } ${canDelete ? 'pr-8' : ''}`}
+                  >
+                    {act.label}
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteActivityType(act.id, e)}
+                      className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full bg-surface/50 hover:bg-error hover:text-white transition-colors ${isSelected ? 'text-white hover:bg-error/80' : 'text-on-surface-variant'}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               );
             })}
 
@@ -1347,42 +1573,41 @@ export function ActivityView({
               Location & General Details
             </h3>
 
-            {pendingTasks.length > 0 && (
-              <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-md">
-                <label className="block text-label-md font-semibold text-primary mb-1">
-                  Fill from Pending Task
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+              {/* Job Order ID (Available for all activities) */}
+              <div className="flex flex-col gap-xs">
+                <label className="font-label-md text-label-md text-on-surface-variant">
+                  Job Order ID{" "}
+                  {isMeterTest && <span className="text-error">*</span>}
                 </label>
-                <select
-                  value={selectedTaskId}
-                  onChange={(e) => handleTaskSelect(e.target.value)}
-                >
-                  <option value="">-- Select a Task --</option>
-                  {pendingTasks.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.title} {t.joNumber ? `(JO: ${t.joNumber})` : ""}
+                <input
+                  type="text"
+                  list="pending-jo-numbers"
+                  placeholder="Select or enter JOB ID..."
+                  value={jobOrderNumber}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setJobOrderNumber(val);
+                    const matchingTask = pendingTasks.find(t => t.joNumber === val);
+                    if (matchingTask) {
+                      handleTaskSelect(matchingTask.id);
+                    }
+                  }}
+                  required={isMeterTest}
+                  className="form-input w-full"
+                />
+                <datalist id="pending-jo-numbers">
+                  {pendingTasks.filter(t => t.joNumber).map(t => (
+                    <option key={t.id} value={t.joNumber}>
+                      {t.joNumber}
                     </option>
                   ))}
-                </select>
+                </datalist>
               </div>
-            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
-              {/* Job & Account (Mainly for meters) */}
+              {/* Account (Mainly for meters) */}
               {isMeterActivity && (
                 <>
-                  <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant">
-                      Job Order ID{" "}
-                      {isMeterTest && <span className="text-error">*</span>}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. JOB0003459"
-                      value={jobOrderNumber}
-                      onChange={(e) => setJobOrderNumber(e.target.value)}
-                      required={isMeterTest}
-                    />
-                  </div>
                   <div className="flex flex-col gap-xs">
                     <label className="font-label-md text-label-md text-on-surface-variant">
                       Account Number{" "}
@@ -1394,7 +1619,59 @@ export function ActivityView({
                       value={accountNumber}
                       onChange={(e) => setAccountNumber(e.target.value)}
                       required={isMeterTest}
+                      className={`form-input w-full ${accountNumberError ? 'error border-error bg-error-container' : ''}`}
                     />
+                    {accountNumberError && (
+                      <p className="text-error text-xs mt-1">{accountNumberError}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-md text-label-md text-on-surface-variant">
+                      Account Name
+                    </label>
+                    <input
+                      type="text"
+                      value={testAccountName}
+                      onChange={(e) => setTestAccountName(e.target.value)}
+                      placeholder="e.g. John Doe"
+                      className="form-input w-full"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-md text-label-md text-on-surface-variant">
+                      Contact Number
+                    </label>
+                    <input
+                      type="text"
+                      value={contactNumber}
+                      onChange={(e) => setContactNumber(e.target.value)}
+                      placeholder="e.g. 09123456789"
+                      className={`form-input w-full ${contactNumberError ? 'error border-error bg-error-container' : ''}`}
+                    />
+                    {contactNumberError && (
+                      <p className="text-error text-xs mt-1">{contactNumberError}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-md text-label-md text-on-surface-variant">
+                      Account Type
+                    </label>
+                    <select value={accountType} onChange={(e) => setAccountType(e.target.value)} className="form-input w-full">
+                      <option value="Residential">Residential</option>
+                      <option value="Commercial">Commercial</option>
+                      <option value="Industrial">Industrial</option>
+                      <option value="Institutional">Institutional</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-md text-label-md text-on-surface-variant">
+                      Account Status
+                    </label>
+                    <select value={accountStatus} onChange={(e) => setAccountStatus(e.target.value)} className="form-input w-full">
+                      <option value="Active">Active</option>
+                      <option value="Disconnected">Disconnected</option>
+                      <option value="Pending">Pending</option>
+                    </select>
                   </div>
                   <div className="flex flex-col gap-xs md:col-span-2">
                     <label className="font-label-md text-label-md text-on-surface-variant">
@@ -1403,6 +1680,7 @@ export function ActivityView({
                     <input
                       type="date"
                       required={isMeterTest}
+                      className="form-input w-full"
                     />
                   </div>
                 </>
@@ -1665,46 +1943,50 @@ export function ActivityView({
 
               {!isTankering && (
                 <>
-                  <div className="flex flex-col gap-xs md:col-span-1">
-                    <label htmlFor="specific-component-id" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
-                      Pump House / Well / Equipment
-                    </label>
-                    <input
-                      type="text"
-                      id="specific-component-id"
-                      value={specificComponent}
-                      onChange={(e) => {
-                        setSpecificComponent(e.target.value);
-                        setSelectedSubCategory("");
-                      }}
-                      placeholder="Select Equipment..."
-                      list="component-options"
-                    />
-                    <datalist id="component-options">
-                      {equipmentOptions().map((comp) => (
-                        <option key={comp} value={comp} />
-                      ))}
-                    </datalist>
-                  </div>
+                  {!isMeterTest && (
+                    <>
+                      <div className="flex flex-col gap-xs md:col-span-1">
+                        <label htmlFor="specific-component-id" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
+                          Pump House / Well / Equipment
+                        </label>
+                        <input
+                          type="text"
+                          id="specific-component-id"
+                          value={specificComponent}
+                          onChange={(e) => {
+                            setSpecificComponent(e.target.value);
+                            setSelectedSubCategory("");
+                          }}
+                          placeholder="Select Equipment..."
+                          list="component-options"
+                        />
+                        <datalist id="component-options">
+                          {equipmentOptions().map((comp) => (
+                            <option key={comp} value={comp} />
+                          ))}
+                        </datalist>
+                      </div>
 
-                  <div className="flex flex-col gap-xs md:col-span-1">
-                    <label htmlFor="sub-category-id" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
-                      Sub-Category / Part
-                    </label>
-                    <input
-                      type="text"
-                      id="sub-category-id"
-                      value={selectedSubCategory}
-                      onChange={(e) => setSelectedSubCategory(e.target.value)}
-                      placeholder="Select Sub-Category..."
-                      list="sub-options"
-                    />
-                    <datalist id="sub-options">
-                      {subCategoryOptions().map((sub) => (
-                        <option key={sub} value={sub} />
-                      ))}
-                    </datalist>
-                  </div>
+                      <div className="flex flex-col gap-xs md:col-span-1">
+                        <label htmlFor="sub-category-id" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
+                          Sub-Category / Part
+                        </label>
+                        <input
+                          type="text"
+                          id="sub-category-id"
+                          value={selectedSubCategory}
+                          onChange={(e) => setSelectedSubCategory(e.target.value)}
+                          placeholder="Select Sub-Category..."
+                          list="sub-options"
+                        />
+                        <datalist id="sub-options">
+                          {subCategoryOptions().map((sub) => (
+                            <option key={sub} value={sub} />
+                          ))}
+                        </datalist>
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex flex-col gap-xs md:col-span-2 mt-2">
                     <label htmlFor="block-lot-id" className="font-label-md text-label-md text-on-surface-variant flex items-center gap-1">
@@ -1721,81 +2003,198 @@ export function ActivityView({
                 </>
               )}
 
-              {/* Tankering Operations */}
+              {/* Water Hauling Operations */}
               {isTankering && (
                 <>
+                  <div className="md:col-span-2 flex flex-col gap-xs mb-4">
+                    <label className="font-label-md text-label-md text-on-surface-variant">Attach to Active Trip Ticket (Optional)</label>
+                    <select
+                      value={selectedTripTicketId}
+                      onChange={(e) => {
+                        const ttId = e.target.value;
+                        setSelectedTripTicketId(ttId);
+                        if (ttId) {
+                          const ticket = tripTickets.find(t => t.id === ttId);
+                          if (ticket) {
+                            setPlateNumber(ticket.vehicle);
+                            setDriverName(ticket.driver);
+                          }
+                        }
+                      }}
+                      className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                    >
+                      <option value="">-- Select Active Trip Ticket --</option>
+                      {tripTickets.map(tt => (
+                        <option key={tt.id} value={tt.id}>{tt.date} | {tt.vehicle} | {tt.driver}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
                   <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant">Truck Plate No.</label>
+                    <label className="font-label-md text-label-md text-on-surface-variant">Vehicle Type</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 10-Wheeler Tanker"
+                      value={vehicleType}
+                      onChange={(e) => setVehicleType(e.target.value)}
+                      className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-xs">
+                    <label className="font-label-md text-label-md text-on-surface-variant">Plate Number</label>
                     <input 
                       type="text" 
                       placeholder="e.g. ABC 1234"
-                      value={truckPlateNo}
-                      onChange={(e) => setTruckPlateNo(e.target.value)}
+                      value={plateNumber}
+                      onChange={(e) => setPlateNumber(e.target.value)}
+                      className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                     />
                   </div>
-                  <div className="flex flex-col gap-xs">
+                  
+                  <div className="flex flex-col gap-xs md:col-span-2">
                     <label className="font-label-md text-label-md text-on-surface-variant">Driver Name</label>
                     <input 
                       type="text" 
                       placeholder="Name of driver"
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
+                      className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                     />
                   </div>
-                  <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant">Time IN (Start Loading)</label>
-                    <input 
-                      type="datetime-local" 
-                      value={tankeringTimeStart}
-                      onChange={(e) => setTankeringTimeStart(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant text-primary font-bold">
-                      Time OUT (Finish Loading)
-                      {tankeringTimeStart && tankeringTimeEnd && (
-                         <span className="ml-2 text-xs text-secondary bg-secondary/10 px-2 py-0.5 rounded">
-                           Duration: {(
-                             (new Date(tankeringTimeEnd).getTime() - new Date(tankeringTimeStart).getTime()) /
-                             (1000 * 60)
-                           ).toFixed(0)} min
-                         </span>
-                      )}
-                    </label>
-                    <input 
-                      type="datetime-local" 
-                      value={tankeringTimeEnd}
-                      onChange={(e) => setTankeringTimeEnd(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant">Source Location</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Pump Station 1"
-                      value={sourceLocation}
-                      onChange={(e) => setSourceLocation(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-xs">
-                    <label className="font-label-md text-label-md text-on-surface-variant">Delivery Location</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Phase 2 Reservoir"
-                      value={deliveryLocation}
-                      onChange={(e) => setDeliveryLocation(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-xs md:col-span-2">
-                    <label className="font-label-md text-label-md text-on-surface-variant text-primary border-l-2 border-primary pl-2">
-                      Volume Delivered (m³)
-                    </label>
-                    <input 
-                      type="number" 
-                      placeholder="e.g. 10"
-                      value={volumeDelivered}
-                      onChange={(e) => setVolumeDelivered(e.target.value)}
-                    />
+
+                  <div className="md:col-span-2 mt-4">
+                    <h4 className="font-headline-sm text-headline-sm text-on-surface mb-2 border-b border-outline-variant/30 pb-2">Hauling Cycles / Trip Log</h4>
+                    {haulingCycles.map((cycle, index) => (
+                      <div key={cycle.id} className="bg-surface-container p-4 rounded-lg mb-4 border border-outline-variant relative">
+                        {haulingCycles.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setHaulingCycles(haulingCycles.filter(c => c.id !== cycle.id))}
+                            className="absolute top-2 right-2 text-error hover:bg-error-container p-1 rounded font-label-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <h5 className="font-label-md text-primary mb-3">Trip {index + 1}</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-xs md:col-span-2">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Source / Loading Point</label>
+                            <input 
+                              type="text"
+                              value={cycle.sourceLocation}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].sourceLocation = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              placeholder="e.g. Pump Station 1"
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+                          
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Loading Start Time</label>
+                            <input 
+                              type="datetime-local"
+                              value={cycle.loadingStartTime}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].loadingStartTime = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Loading End Time</label>
+                            <input 
+                              type="datetime-local"
+                              value={cycle.loadingEndTime}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].loadingEndTime = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-xs md:col-span-2">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Volume Loaded (m³)</label>
+                            <input 
+                              type="number"
+                              value={cycle.volumeLoaded}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].volumeLoaded = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              placeholder="e.g. 10"
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-xs md:col-span-2">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Discharge / Delivery Point</label>
+                            <input 
+                              type="text"
+                              value={cycle.deliveryLocation}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].deliveryLocation = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              placeholder="e.g. Phase 2 Reservoir"
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Discharge Start Time</label>
+                            <input 
+                              type="datetime-local"
+                              value={cycle.injectionStartTime}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].injectionStartTime = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-xs">
+                            <label className="font-label-sm text-label-sm text-on-surface-variant">Discharge End Time</label>
+                            <input 
+                              type="datetime-local"
+                              value={cycle.injectionEndTime}
+                              onChange={(e) => {
+                                const updated = [...haulingCycles];
+                                updated[index].injectionEndTime = e.target.value;
+                                setHaulingCycles(updated);
+                              }}
+                              className="w-full bg-surface border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setHaulingCycles([...haulingCycles, {
+                        id: Date.now().toString(),
+                        sourceLocation: "",
+                        loadingStartTime: "",
+                        loadingEndTime: "",
+                        volumeLoaded: "",
+                        deliveryLocation: "",
+                        injectionStartTime: "",
+                        injectionEndTime: "",
+                      }])}
+                      className="px-4 py-2 border border-outline-variant rounded-full text-primary font-label-md hover:bg-surface-variant transition-colors w-full"
+                    >
+                      + Add Another Trip
+                    </button>
                   </div>
                 </>
               )}
@@ -1828,9 +2227,15 @@ export function ActivityView({
                           placeholder="e.g. Sensus, Itron"
                           list="meter-brands"
                           required={isMeterTest}
+                          className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                         />
                         <datalist id="meter-brands">
-                          {pastMeterBrands.map(b => (
+                          <option value="Arad" />
+                          <option value="Sensus" />
+                          <option value="Itron" />
+                          <option value="Aqua-Jet" />
+                          <option value="Elster" />
+                          {pastMeterBrands.filter(b => !["Arad", "Sensus", "Itron", "Aqua-Jet", "Elster"].includes(b)).map(b => (
                             <option key={b} value={b} />
                           ))}
                         </datalist>
@@ -1845,6 +2250,7 @@ export function ActivityView({
                           onChange={(e) => setMeterSerialNumber(e.target.value)}
                           placeholder="Factory stamped serial number"
                           required={isMeterTest}
+                          className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                         />
                       </div>
                     </>
@@ -1949,6 +2355,7 @@ export function ActivityView({
                               onChange={(e) => setPrevMeterSize(e.target.value)}
                               placeholder="e.g. 1/2"
                               required={isMeterReplacement}
+                              className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                             />
                           </div>
                           <div className="flex flex-col gap-xs">
@@ -1961,6 +2368,8 @@ export function ActivityView({
                               onChange={(e) => setPrevMeterBrand(e.target.value)}
                               placeholder="e.g. Itron"
                               required={isMeterReplacement}
+                              list="meter-brands"
+                              className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                             />
                           </div>
                           <div className="flex flex-col gap-xs">
@@ -1972,6 +2381,7 @@ export function ActivityView({
                               value={prevMeterSerial}
                               onChange={(e) => setPrevMeterSerial(e.target.value)}
                               required={isMeterReplacement}
+                              className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                             />
                           </div>
                           <div className="flex flex-col gap-xs">
@@ -1988,6 +2398,7 @@ export function ActivityView({
                                 )
                               }
                               required={isMeterReplacement}
+                              className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                             />
                           </div>
                         </div>
@@ -2007,6 +2418,7 @@ export function ActivityView({
                             onChange={(e) => setNewMeterSize(e.target.value)}
                             placeholder="e.g. 1/2"
                             required={isMeterReplacement || isMeterInstallation}
+                            className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                           />
                         </div>
                         <div className="flex flex-col gap-xs">
@@ -2019,6 +2431,8 @@ export function ActivityView({
                             onChange={(e) => setNewMeterBrand(e.target.value)}
                             placeholder="e.g. Itron"
                             required={isMeterReplacement || isMeterInstallation}
+                            list="meter-brands"
+                            className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                           />
                         </div>
                         <div className="flex flex-col gap-xs">
@@ -2030,6 +2444,7 @@ export function ActivityView({
                             value={newMeterSerial}
                             onChange={(e) => setNewMeterSerial(e.target.value)}
                             required={isMeterReplacement || isMeterInstallation}
+                            className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                           />
                         </div>
                         <div className="flex flex-col gap-xs">
@@ -2046,6 +2461,7 @@ export function ActivityView({
                               )
                             }
                             required={isMeterReplacement || isMeterInstallation}
+                            className="w-full bg-surface-container border border-outline-variant rounded-lg p-3 font-body-md text-body-md focus:ring-2 focus:ring-primary-container outline-none"
                           />
                         </div>
                       </div>
@@ -2172,20 +2588,6 @@ export function ActivityView({
 
                           <div className="flex flex-col gap-xs">
                             <label className="font-label-md text-label-md text-on-surface-variant">
-                              Account Name (for PDF)
-                            </label>
-                            <input
-                              type="text"
-                              value={testAccountName}
-                              onChange={(e) =>
-                                setTestAccountName(e.target.value)
-                              }
-                              placeholder="e.g. ACC002018014 / John Doe"
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-xs">
-                            <label className="font-label-md text-label-md text-on-surface-variant">
                               Current Read (Initial)
                             </label>
                             <input
@@ -2278,7 +2680,6 @@ export function ActivityView({
                                       className: 'w-full h-full cursor-crosshair relative z-10',
                                       style: { width: '100%', height: '200px' }
                                     }}
-                                    onEnd={() => setWitnessSignature(sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png') || null)}
                                     backgroundColor="rgba(255, 255, 255, 0)"
                                     penColor="blue"
                                   />
@@ -2286,17 +2687,39 @@ export function ActivityView({
                               ) : (
                                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface">
                                   <img src={witnessSignature} alt="Witness Signature" className="max-h-[160px]" />
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex gap-2 mt-2">
+                              {!witnessSignature ? (
+                                <>
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      sigCanvas.current?.clear();
-                                      setWitnessSignature(null);
-                                    }}
-                                    className="mt-2 text-error text-xs font-bold uppercase tracking-wider hover:underline"
+                                    onClick={() => setWitnessSignature(sigCanvas.current?.getCanvas().toDataURL('image/png') || null)}
+                                    className="flex-1 py-2 bg-primary/10 text-primary rounded font-label-md hover:bg-primary/20 transition-colors"
                                   >
-                                    Clear & Resign
+                                    Save Signature
                                   </button>
-                                </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => sigCanvas.current?.clear()}
+                                    className="flex-1 py-2 bg-error/10 text-error rounded font-label-md hover:bg-error/20 transition-colors"
+                                  >
+                                    Clear
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setWitnessSignature(null);
+                                    setTimeout(() => sigCanvas.current?.clear(), 10);
+                                  }}
+                                  className="w-full py-2 bg-error/10 text-error rounded font-label-md hover:bg-error/20 transition-colors"
+                                >
+                                  Clear & Resign
+                                </button>
                               )}
                             </div>
                           </div>
@@ -3062,6 +3485,9 @@ export function ActivityView({
                           <th className="py-2 px-2 font-medium">
                             GPS Coordinates
                           </th>
+                          <th className="py-2 px-2 font-medium text-right">
+                            Actions
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -3073,11 +3499,25 @@ export function ActivityView({
                               <td className="py-2 px-2 text-primary font-mono text-xs">
                                 {h.location ? `${h.location.latitude.toFixed(6)}, ${h.location.longitude.toFixed(6)}` : "No GPS data"}
                               </td>
+                              <td className="py-2 px-2 text-right">
+                                {h.type === "meter_test" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReprintData(h);
+                                      setTimeout(() => window.print(), 500);
+                                    }}
+                                    className="text-primary font-semibold hover:underline bg-primary/10 px-3 py-1 rounded text-xs"
+                                  >
+                                    Reprint
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={3} className="py-4 px-2 text-center text-on-surface-variant">
+                            <td colSpan={4} className="py-4 px-2 text-center text-on-surface-variant">
                               No previous visits found for this account.
                             </td>
                           </tr>
@@ -3131,31 +3571,23 @@ export function ActivityView({
                       </label>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-xs md:col-span-2">
-                    <label className="font-label-md text-label-md text-on-surface-variant">
-                      Tested By (Signature/Name)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Sign or type technician name"
-                      required
-                    />
-                  </div>
-                  <div className="flex flex-col gap-xs md:col-span-2">
-                    <label className="font-label-md text-label-md text-on-surface-variant">
-                      Checked By
-                    </label>
-                    <select
-                      required
-                    >
-                      <option value="">Select Supervisor</option>
-                      {customStaff.map((staff) => (
-                        <option key={staff} value={staff}>
-                          {staff.split(" - ")[0]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {currentUserRole && (['admin', 'operations_manager'].includes(currentUserRole.toLowerCase()) || currentUserRole.toLowerCase().includes('head')) && (
+                    <div className="flex flex-col gap-xs md:col-span-2">
+                      <label className="font-label-md text-label-md text-on-surface-variant">
+                        Checked By
+                      </label>
+                      <select
+                        required
+                      >
+                        <option value="">Select Supervisor</option>
+                        {customStaff.map((staff) => (
+                          <option key={staff} value={staff}>
+                            {staff.split(" - ")[0]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3192,7 +3624,6 @@ export function ActivityView({
                           className: 'w-full h-full cursor-crosshair relative z-10',
                           style: { width: '100%', height: '200px' }
                         }}
-                        onEnd={() => setWitnessSignature(sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png') || null)}
                         backgroundColor="rgba(255, 255, 255, 0)"
                         penColor="blue"
                       />
@@ -3200,17 +3631,39 @@ export function ActivityView({
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface">
                       <img src={witnessSignature} alt="Witness Signature" className="max-h-[160px]" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  {!witnessSignature ? (
+                    <>
                       <button
                         type="button"
-                        onClick={() => {
-                          sigCanvas.current?.clear();
-                          setWitnessSignature(null);
-                        }}
-                        className="mt-2 text-error text-xs font-bold uppercase tracking-wider hover:underline"
+                        onClick={() => setWitnessSignature(sigCanvas.current?.getCanvas().toDataURL('image/png') || null)}
+                        className="flex-1 py-2 bg-primary/10 text-primary rounded font-label-md hover:bg-primary/20 transition-colors"
                       >
-                        Clear & Resign
+                        Save Signature
                       </button>
-                    </div>
+                      <button
+                        type="button"
+                        onClick={() => sigCanvas.current?.clear()}
+                        className="flex-1 py-2 bg-error/10 text-error rounded font-label-md hover:bg-error/20 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWitnessSignature(null);
+                        setTimeout(() => sigCanvas.current?.clear(), 10);
+                      }}
+                      className="w-full py-2 bg-error/10 text-error rounded font-label-md hover:bg-error/20 transition-colors"
+                    >
+                      Clear & Resign
+                    </button>
                   )}
                 </div>
               </div>
@@ -3511,7 +3964,7 @@ export function ActivityView({
           <button
             type="submit"
             disabled={!selectedActivity || isSubmitting || isSavingDraft}
-            className={`w-full py-4 text-lg btn-primary ${["flushing", "tank_cleaning", "leak_repair", "tank_opening"].includes(selectedActivity || "") ? "sm:w-2/3" : ""}`}
+            className={`w-full py-4 text-lg btn-primary ${["flushing", "tank_cleaning", "leak_repair", "tank_opening"].includes(selectedActivity || "") ? "sm:w-1/3" : "sm:w-2/3"}`}
           >
             {isSubmitting ? (
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -3520,15 +3973,67 @@ export function ActivityView({
             )}
             {isSubmitting ? "Submitting..." : "Submit Accomplishment"}
           </button>
+          
+          <button
+            type="button"
+            onClick={() => {
+              setIncidentContext({
+                joNumber: jobOrderNumber,
+                accountNumber: accountNumber,
+                facility: selectedArea,
+                site: selectedSiteOrWell,
+                blockLot: blockLot
+              });
+              setWorkCategory("incident");
+            }}
+            className={`w-full py-4 text-lg text-error bg-error-container hover:bg-error/20 rounded-full font-label-lg transition-all active:scale-[0.98] border-error flex items-center justify-center ${["flushing", "tank_cleaning", "leak_repair", "tank_opening"].includes(selectedActivity || "") ? "sm:w-1/3" : "sm:w-1/3"}`}
+          >
+            Report Incident
+          </button>
         </div>
       </form>
       )}
 
       {/* Hidden PDF Printable Test Area */}
-      {isMeterTest && testAccountName && (
+      {(isMeterTest && testAccountName) || reprintData ? (
         <div className="hidden print:block">
           <PrintableMeterTest
-            data={{
+            data={reprintData ? {
+              account: reprintData.details?.testAccountName || reprintData.details?.accountNumber || "",
+              date: new Date(reprintData.date).toLocaleDateString(),
+              projectAddress: `${reprintData.siteOrWell || reprintData.area} ${reprintData.blockLot ? "- " + reprintData.blockLot : ""}`,
+              natureOfTest: reprintData.details?.testNature || "",
+              paymentDetails: "",
+              meterBrand: reprintData.details?.meterBrand || "",
+              meterSerialNumber: reprintData.details?.meterSerialNumber || "",
+              volumeOfWater: 30, // 3 x 10
+              natureOfMeter: reprintData.details?.meterNature || "",
+              reading1_init: Number(reprintData.details?.currentReading || 0),
+              reading1_final: Number(reprintData.details?.reading1 || 0),
+              reading2_init: Number(reprintData.details?.reading1 || 0),
+              reading2_final: Number(reprintData.details?.reading2 || 0),
+              reading3_init: Number(reprintData.details?.reading2 || 0),
+              reading3_final: Number(reprintData.details?.reading3 || 0),
+              error1: (((Number(reprintData.details?.reading1 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.01) - 1) * 100,
+              error2: (((Number(reprintData.details?.reading2 || 0) - Number(reprintData.details?.reading1 || 0)) / 0.01) - 1) * 100,
+              error3: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.reading2 || 0)) / 0.01) - 1) * 100,
+              avgError: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100,
+              testingResults:
+                (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
+                  ? "Fast Moving"
+                  : (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
+                    ? "Slow Moving"
+                    : "Passed",
+              recommendation:
+                Math.abs((((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
+                  ? "Replace"
+                  : "Retain",
+              testedBy: (reprintData.staff || []).join(", "),
+              witnessedBy: reprintData.details?.witnessedBy || "",
+              witnessSignatureImg: reprintData.details?.witnessSignature || undefined,
+              checkedBy: "HERNAN TALAVERA",
+              finalDecision: "",
+            } : {
               account: testAccountName,
               date: currentDate
                 ? new Date(currentDate).toLocaleDateString()
@@ -3574,7 +4079,7 @@ export function ActivityView({
             ref={printRef}
           />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

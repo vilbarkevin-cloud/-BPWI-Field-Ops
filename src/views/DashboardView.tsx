@@ -552,7 +552,7 @@ export function DashboardView({
                 className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
                   selectedArea === area
                     ? "bg-primary text-white shadow-sm"
-                    : "bg-white text-on-surface-variant hover:bg-surface-container-low border border-outline-variant/60"
+                    : "bg-surface text-on-surface-variant hover:bg-surface-container-low border border-outline-variant/60"
                 }`}
               >
                 {area}
@@ -588,7 +588,7 @@ export function DashboardView({
           <div className="relative flex-1 lg:flex-none">
             <button
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="w-full lg:w-auto flex items-center justify-between gap-2 px-4 py-2 bg-white border border-outline-variant rounded-lg shadow-sm hover:bg-surface-container-low transition-colors"
+              className="w-full lg:w-auto flex items-center justify-between gap-2 px-4 py-2 bg-surface border border-outline-variant rounded-lg shadow-sm hover:bg-surface-container-low transition-colors text-on-surface"
             >
               <span className="text-label-md font-semibold">
                 {activityTypes.find((a) => a.id === selectedActivity)?.label}
@@ -597,7 +597,7 @@ export function DashboardView({
             </button>
 
             {isDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-full sm:w-64 max-h-[50vh] overflow-y-auto bg-white border border-outline-variant rounded-xl shadow-xl z-50 py-1.5">
+              <div className="absolute right-0 mt-2 w-full sm:w-64 max-h-[50vh] overflow-y-auto bg-surface border border-outline-variant rounded-xl shadow-xl z-50 py-1.5">
                 {combinedActivityTypes.map((act) => (
                   <button
                     key={act.id}
@@ -625,13 +625,13 @@ export function DashboardView({
             )}
             <button
               onClick={() => setActiveTab("live-map")}
-              className="px-4 py-2 text-sm font-semibold bg-white text-on-surface border border-outline-variant hover:bg-surface-container-low transition-colors rounded-lg flex items-center gap-2 shadow-sm"
+              className="px-4 py-2 text-sm font-semibold bg-surface text-on-surface border border-outline-variant hover:bg-surface-container-low transition-colors rounded-lg flex items-center gap-2 shadow-sm"
             >
               <MapIcon className="w-4 h-4 text-primary" /> Live Map
             </button>
             <button
               onClick={() => setIsExportModalOpen(true)}
-              className="px-4 py-2 text-sm font-semibold bg-white text-on-surface border border-outline-variant hover:bg-surface-container-low transition-colors rounded-lg flex items-center gap-2 shadow-sm"
+              className="px-4 py-2 text-sm font-semibold bg-surface text-on-surface border border-outline-variant hover:bg-surface-container-low transition-colors rounded-lg flex items-center gap-2 shadow-sm"
             >
               <FileEdit className="w-4 h-4" /> Reports
             </button>
@@ -761,7 +761,7 @@ export function DashboardView({
           </div>
         </div>
       ) : isHuddleMode ? (
-        <div className="bg-white rounded-xl shadow-sm border border-outline-variant p-6 mt-6 animate-in fade-in slide-in-from-bottom-4">
+        <div className="bg-surface rounded-xl shadow-sm border border-outline-variant p-6 mt-6 animate-in fade-in slide-in-from-bottom-4">
           <h2 className="text-lg font-bold text-on-surface mb-4">Submit Daily Huddle</h2>
           <form
             onSubmit={async (e) => {
@@ -804,7 +804,7 @@ export function DashboardView({
           {/* Summary Tiles Section (Global KPIs) */}
           <section className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-gutter">
             {/* Tasks Completed % */}
-            <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 relative group">
+            <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 relative group">
               <div className="flex justify-between items-start mb-1.5">
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-on-surface-variant flex items-center gap-1">
@@ -833,7 +833,7 @@ export function DashboardView({
             </div>
 
             {/* Total Activities Recorded */}
-            <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col relative group">
+            <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col relative group">
               <div className="flex justify-between items-start mb-1.5">
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold text-on-surface-variant flex items-center gap-1">
@@ -883,7 +883,7 @@ export function DashboardView({
             </div>
 
             {/* Staff Productivity Index */}
-            <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col">
+            <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col">
               <div className="flex justify-between items-start mb-1.5">
                 <span className="text-sm font-semibold text-on-surface-variant">
                   Staff Involvement
@@ -927,7 +927,7 @@ export function DashboardView({
           </section>
 
           {/* Recent Activity Summary */}
-          <section className="mt-8 bg-white border border-outline-variant/60 rounded-xl shadow-sm overflow-hidden">
+          <section className="mt-8 bg-surface border border-outline-variant/60 rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-outline-variant/40 flex justify-between items-center">
               <h3 className="text-base text-on-surface font-semibold flex items-center gap-2">
                 <Activity className="w-5 h-5 text-primary" />
@@ -983,7 +983,7 @@ export function DashboardView({
             {selectedActivity === "all" && (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-gutter">
                 {/* Weekly Trend Chart */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-2">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-base text-on-surface font-semibold">
                       Weekly Activity Completion Trend
@@ -1122,7 +1122,7 @@ export function DashboardView({
                 </div>
 
                 {/* Area Tasks Chart */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-base text-on-surface font-semibold">
                       Tasks by Area
@@ -1247,7 +1247,7 @@ export function DashboardView({
                 </div>
 
                 {/* Area Tasks Sunburst (Nested Pie Chart) */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="text-base text-on-surface font-semibold">
                       Hierarchical Status View
@@ -1361,7 +1361,7 @@ export function DashboardView({
                 </div>
 
                 {dashboardMode === "field_ops" ? (
-                  <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                  <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="text-base text-on-surface font-semibold">
                         Task Density by Area
@@ -1372,7 +1372,7 @@ export function DashboardView({
                     <div className="min-w-[400px]">
                       {/* Grid header */}
                       <div className="grid grid-cols-[140px_repeat(7,1fr)] gap-2 mb-2">
-                        <div className="sticky left-0 z-10 bg-white text-left font-semibold text-xs text-on-surface-variant flex items-end">
+                        <div className="sticky left-0 z-10 bg-surface text-left font-semibold text-xs text-on-surface-variant flex items-end">
                           Area
                         </div>
                         {[...Array(7)]
@@ -1405,7 +1405,7 @@ export function DashboardView({
                             className="grid grid-cols-[140px_repeat(7,1fr)] gap-2"
                           >
                             {/* Frozen left column */}
-                            <div className="sticky left-0 z-10 bg-white flex flex-col justify-center shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] pr-2 py-0.5 min-w-0">
+                            <div className="sticky left-0 z-10 bg-surface flex flex-col justify-center shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] pr-2 py-0.5 min-w-0">
                               <span
                                 className="text-xs font-semibold text-on-surface truncate"
                                 title={area}
@@ -1428,10 +1428,31 @@ export function DashboardView({
                               const cellDate = new Date();
                               cellDate.setDate(cellDate.getDate() - (6 - cIdx));
                               const dateStr = cellDate.toISOString().split('T')[0];
-                              const count = activities.filter(a =>
-                                (a.area || '').toLowerCase().includes(area.toLowerCase()) &&
-                                a.date === dateStr
-                              ).length;
+                              
+                              const count = tasks.filter(t => {
+                                const tArea = (t.location || '').toLowerCase();
+                                const searchArea = area.toLowerCase();
+                                if (searchArea !== "all areas" && !tArea.includes(searchArea)) return false;
+
+                                const getDateStr = (val: any) => {
+                                  if (!val) return "";
+                                  if (typeof val === "string") return val.split('T')[0];
+                                  if (val.toDate) return val.toDate().toISOString().split('T')[0];
+                                  try {
+                                    const parsed = new Date(val);
+                                    if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+                                  } catch (e) {}
+                                  return "";
+                                };
+                                
+                                const createdDate = getDateStr(t.createdAt);
+                                const updatedDate = getDateStr(t.updatedAt);
+                                const completedDate = getDateStr(t.completedAt);
+                                const deadlineDate = getDateStr(t.deadline);
+                                
+                                return createdDate === dateStr || updatedDate === dateStr || completedDate === dateStr || deadlineDate === dateStr;
+                              }).length;
+
                               const intensity = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : 3;
 
                               const colorClasses = [
@@ -1459,7 +1480,7 @@ export function DashboardView({
                 </div>
                 ) : (
                   <>
-                    <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 h-full">
+                    <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 h-full">
                       <h3 className="text-base text-on-surface font-semibold mb-4">Projected Workload</h3>
                       <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -1488,7 +1509,7 @@ export function DashboardView({
                       </div>
                     </div>
                     {/* Removed Resource Allocation module as it was hardcoded */}
-                    <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-3">
+                    <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-3">
                       <h3 className="text-base text-on-surface font-semibold mb-3">Task Efficiency (Actual Avg. vs. Expected)</h3>
                       <div className="text-sm text-on-surface-variant mb-4">
                         Historical data metrics identify operational bottlenecks across task categories and zones.
@@ -1512,7 +1533,7 @@ export function DashboardView({
                       </div>
                     </div>
                     
-                    <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-2">
+                    <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 xl:col-span-2">
                       <h3 className="text-base text-on-surface font-semibold mb-4 flex items-center gap-2">
                         <FileText className="w-5 h-5 text-primary" /> Recent Team Handovers
                       </h3>
@@ -1551,7 +1572,7 @@ export function DashboardView({
             {selectedActivity === "leak_repair" && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
                 {/* Breakdown by cause */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Task Breakdown by Category
                   </h3>
@@ -1624,7 +1645,7 @@ export function DashboardView({
                 </div>
 
                 {/* Status distribution */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Status Distribution
                   </h3>
@@ -1664,7 +1685,7 @@ export function DashboardView({
                 </div>
 
                 {/* Trend Line & KPIs */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="md:col-span-3 h-[200px]">
                       <h3 className="text-base font-semibold mb-2 text-on-surface">
@@ -1751,7 +1772,7 @@ export function DashboardView({
             {selectedActivity === "meter_inst" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
                 {/* Progress Gauge */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
                   <h3 className="text-base font-semibold mb-2 text-on-surface w-full text-left">
                     Target vs Actual
                   </h3>
@@ -1805,7 +1826,7 @@ export function DashboardView({
                 </div>
 
                 {/* Installations by Tech */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Installations by Technician
                   </h3>
@@ -1854,7 +1875,7 @@ export function DashboardView({
                 </div>
 
                 {/* Map Placeholder */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
                   <div className="flex justify-between items-center mb-4">
                     <h3 className="text-base font-semibold text-on-surface flex items-center gap-2">
                       <MapIcon className="w-5 h-5 text-primary" /> GPS Locations
@@ -1873,7 +1894,7 @@ export function DashboardView({
                       <div className="absolute top-1/2 left-1/3 w-4 h-4 bg-primary rounded-full shadow-lg"></div>
                       <div className="absolute top-1/3 right-1/4 w-4 h-4 bg-primary rounded-full shadow-lg"></div>
                       <div className="absolute bottom-1/4 right-1/3 w-4 h-4 bg-primary rounded-full shadow-lg"></div>
-                      <span className="relative z-10 text-on-surface-variant font-semibold bg-white/80 px-4 py-2 rounded-full shadow-sm">
+                      <span className="relative z-10 text-on-surface-variant font-semibold bg-surface/80 px-4 py-2 rounded-full shadow-sm">
                         Interactive Map View
                       </span>
                     </div>
@@ -1892,7 +1913,7 @@ export function DashboardView({
             {selectedActivity === "flushing" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
                 {/* Timeline: Scheduled vs completed */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Scheduled vs Completed
                   </h3>
@@ -1961,7 +1982,7 @@ export function DashboardView({
                   )}
                 </div>
                 {/* Gauge: Compliance */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center justify-center relative">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center justify-center relative">
                   <h3 className="text-base font-semibold mb-2 text-on-surface w-full text-left absolute top-4 left-4">
                     PMS Compliance
                   </h3>
@@ -2015,7 +2036,7 @@ export function DashboardView({
                 </div>
 
                 {/* Heatmap */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Flushing Frequency by Zone
                   </h3>
@@ -2051,7 +2072,7 @@ export function DashboardView({
             {selectedActivity === "tank_cleaning" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
                 {/* Pie Chart: Tank Types */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 border-b-4 border-b-primary">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 border-b-4 border-b-primary">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Tanks Cleaned by Size
                   </h3>
@@ -2091,7 +2112,7 @@ export function DashboardView({
                 </div>
 
                 {/* Bar Chart: Plant freq */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Cleaning Frequency per Plant
                   </h3>
@@ -2152,7 +2173,7 @@ export function DashboardView({
                 </div>
 
                 {/* KPIs & Schedule */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3 flex flex-col md:flex-row gap-6">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3 flex flex-col md:flex-row gap-6">
                   <div className="flex-1 space-y-4 border-r border-outline-variant/50 pr-4">
                     <h3 className="text-base font-semibold text-on-surface">
                       Cleaning Schedule Tracking
@@ -2223,7 +2244,7 @@ export function DashboardView({
             {selectedActivity === "well_pull_out" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
                 {/* Line Chart */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 md:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 md:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface flex items-center justify-between">
                     Wells Pulled Out Over Time
                     <div className="flex items-center gap-4 text-xs font-semibold text-on-surface-variant">
@@ -2281,7 +2302,7 @@ export function DashboardView({
                 </div>
 
                 {/* Stacked Col Reasons */}
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 border-t-4 border-t-error">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 border-t-4 border-t-error">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Reasons for Pull-out
                   </h3>
@@ -2343,7 +2364,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 relative overflow-hidden flex items-center justify-center min-h-[250px]">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 relative overflow-hidden flex items-center justify-center min-h-[250px]">
                   <div className="absolute inset-0 pattern-grid-lg text-slate-100 opacity-50"></div>
                   <div className="text-center w-full z-10">
                     <MapIcon className="w-8 h-8 text-on-surface-variant mx-auto mb-2 opacity-50" />
@@ -2355,7 +2376,7 @@ export function DashboardView({
                     </p>
                     <button
                       onClick={() => setActiveTab("live-map")}
-                      className="px-4 py-2 border border-outline-variant rounded bg-white text-sm font-semibold hover:bg-surface-container-low transition-colors"
+                      className="px-4 py-2 border border-outline-variant rounded bg-surface text-sm font-semibold hover:bg-surface-container-low transition-colors"
                     >
                       View Map Overlay
                     </button>
@@ -2376,7 +2397,7 @@ export function DashboardView({
                   ].map((p, i) => (
                     <div
                       key={i}
-                      className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 border-t-4 border-t-primary"
+                      className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 border-t-4 border-t-primary"
                     >
                       <span className="block text-xs font-semibold text-on-surface-variant mb-1">
                         Status
@@ -2390,7 +2411,7 @@ export function DashboardView({
                   ))}
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Real-Time Flow & Pressure
                   </h3>
@@ -2457,7 +2478,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Daily Energy vs Output
                   </h3>
@@ -2506,7 +2527,7 @@ export function DashboardView({
 
             {selectedActivity === "backwash" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 md:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 md:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Scheduled vs Actual Time
                   </h3>
@@ -2570,7 +2591,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
                   <h3 className="text-base font-semibold mb-2 text-on-surface w-full text-left">
                     Schedule Compliance
                   </h3>
@@ -2608,7 +2629,7 @@ export function DashboardView({
 
             {selectedActivity === "garbage_collection" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 md:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 md:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Collection Volume by Zone
                   </h3>
@@ -2657,7 +2678,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Waste Type Distribution
                   </h3>
@@ -2696,7 +2717,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 relative overflow-hidden flex items-center justify-center min-h-[250px] col-span-1 md:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 relative overflow-hidden flex items-center justify-center min-h-[250px] col-span-1 md:col-span-2">
                   <div className="absolute inset-0 pattern-grid-lg text-slate-100 opacity-50"></div>
                   <div className="text-center w-full z-10">
                     <MapIcon className="w-8 h-8 text-secondary mx-auto mb-2 opacity-50" />
@@ -2707,17 +2728,17 @@ export function DashboardView({
                       Live truck tracking overlay
                     </p>
                     <div className="flex justify-center gap-4 text-sm font-semibold text-on-surface">
-                      <div className="bg-white border px-3 py-1.5 rounded shadow-sm text-success">
+                      <div className="bg-surface border px-3 py-1.5 rounded shadow-sm text-success">
                         ✓ Route 1: 100%
                       </div>
-                      <div className="bg-white border px-3 py-1.5 rounded shadow-sm text-warning">
+                      <div className="bg-surface border px-3 py-1.5 rounded shadow-sm text-warning">
                         ⚠ Route 2: 80%
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col justify-center">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col justify-center">
                   <h3 className="text-base font-semibold mb-6 text-on-surface">
                     Key Metrics
                   </h3>
@@ -2745,7 +2766,7 @@ export function DashboardView({
 
             {selectedActivity === "plant_watering" && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-2">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Water Usage per Plant Facility
                   </h3>
@@ -2794,7 +2815,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 flex flex-col items-center">
                   <h3 className="text-base font-semibold mb-2 text-on-surface w-full">
                     Schedule Adherence
                   </h3>
@@ -2846,7 +2867,7 @@ export function DashboardView({
                   </div>
                 </div>
 
-                <div className="bg-white border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
+                <div className="bg-surface border border-outline-variant/60 rounded-xl shadow-sm p-4 col-span-1 lg:col-span-3">
                   <h3 className="text-base font-semibold mb-4 text-on-surface">
                     Water Usage Heatmap by Zone
                   </h3>
@@ -2903,7 +2924,7 @@ export function DashboardView({
 
           {isExportModalOpen && (
             <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
-              <div className="bg-white w-full max-w-[384px] sm:max-w-[448px] rounded-2xl shadow-2xl flex flex-col p-6 animate-in fade-in zoom-in-95 overflow-hidden">
+              <div className="bg-surface w-full max-w-[384px] sm:max-w-[448px] rounded-2xl shadow-2xl flex flex-col p-6 animate-in fade-in zoom-in-95 overflow-hidden">
                 <h3 className="text-xl font-bold text-on-surface mb-2">
                   Export & Reports
                 </h3>
@@ -2985,7 +3006,7 @@ export function DashboardView({
 
           {isHandoverModalOpen && (
             <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
-              <div className="bg-white w-full max-w-[500px] rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95">
+              <div className="bg-surface w-full max-w-[500px] rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95">
                 <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest">
                   <div>
                     <h3 className="text-xl font-bold text-on-surface flex items-center gap-2">
@@ -3090,7 +3111,7 @@ export function DashboardView({
 
           {drillDownData && (
             <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
-              <div className="bg-white w-full max-w-[600px] rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden animate-in fade-in zoom-in-95">
+              <div className="bg-surface w-full max-w-[600px] rounded-2xl shadow-2xl flex flex-col max-h-[80vh] overflow-hidden animate-in fade-in zoom-in-95">
                 <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest">
                   <div>
                     <h3 className="text-xl font-bold text-on-surface">{drillDownData.title}</h3>

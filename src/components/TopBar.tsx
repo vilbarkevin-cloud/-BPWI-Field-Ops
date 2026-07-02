@@ -79,33 +79,39 @@ export function TopBar({
       <div className="flex items-center gap-3">
         {/* Connection Status Icon */}
         <div
-          className="flex items-center justify-center mr-1 gap-1.5"
+          className="flex items-center justify-center mr-2 gap-2"
           title={
             !isOnline
-              ? "Offline - Saved Locally"
+              ? "Offline Mode - Saved Locally"
               : isSyncing
-                ? "Syncing..."
+                ? "Pending Syncs..."
                 : "Fully Synced"
           }
         >
           {!isOnline ? (
-            <>
-              <CloudOff className="w-5 h-5 text-error" />
+            <div className="flex items-center bg-error-container text-on-error-container px-3 py-1 rounded-full shadow-sm">
+              <CloudOff className="w-4 h-4 mr-1.5" />
+              <span className="text-xs font-bold whitespace-nowrap">Offline Mode</span>
               {queueCount > 0 && (
-                <span className="bg-error text-white font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                <span className="ml-2 bg-error text-white font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {queueCount} Pending
+                </span>
+              )}
+            </div>
+          ) : isSyncing ? (
+            <div className="flex items-center bg-warning-container text-on-warning-container px-3 py-1 rounded-full shadow-sm">
+              <RefreshCw className="w-4 h-4 animate-spin mr-1.5" />
+              <span className="text-xs font-bold whitespace-nowrap">Pending Syncs</span>
+              {queueCount > 0 && (
+                <span className="ml-2 bg-warning text-on-warning-container font-mono font-bold text-xs">
                   {queueCount}
                 </span>
               )}
-            </>
-          ) : isSyncing ? (
-            <>
-              <RefreshCw className="w-5 h-5 text-warning animate-pulse" />
-              {queueCount > 0 && (
-                <span className="text-warning font-mono font-bold text-xs">{queueCount}</span>
-              )}
-            </>
+            </div>
           ) : (
-            <CheckCircle2 className="w-5 h-5 text-success" />
+            <div className="flex items-center text-success px-2">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
           )}
         </div>
 

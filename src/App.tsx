@@ -20,6 +20,7 @@ const FacilityView = lazy(() => import("./views/FacilityView").then(m => ({ defa
 const LoginView = lazy(() => import("./views/LoginView").then(m => ({ default: m.LoginView })));
 const MapView = lazy(() => import("./views/MapView").then(m => ({ default: m.MapView })));
 const SettingsView = lazy(() => import("./views/SettingsView").then(m => ({ default: m.SettingsView })));
+const CustomersView = lazy(() => import("./views/CustomersView").then(m => ({ default: m.CustomersView })));
 import {
   WifiOff,
   Wifi,
@@ -31,7 +32,7 @@ import {
   ArrowRight,
   CheckCircle2,
 } from "lucide-react";
-import { collection, onSnapshot, query, doc, getDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "./lib/firebase";
 import { useNetworkInfo } from "./utils/useNetworkInfo";
 import { useSyncQueue } from "./utils/useSyncQueue";
@@ -132,7 +133,7 @@ export default function App() {
     resolveConflict,
     clearCompleted,
     syncProgress,
-  } = useSyncQueue();
+  } = useSyncQueue(currentUid);
 
   useWakeLockManager();
 
@@ -203,39 +204,60 @@ export default function App() {
   const [userEmailForBiometric, setUserEmailForBiometric] = useState<string | null>(null);
 
   useEffect(() => {
+    let profileUnsub: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (profileUnsub) {
+        profileUnsub();
+        profileUnsub = null;
+      }
+
       if (user) {
         let name = user.displayName || user.email?.split("@")[0] || "User";
         const email = user.email || "";
         setUserEmailForBiometric(email);
         
-        let role = null;
-        try {
-          const profileDoc = await getDoc(doc(db, "users", user.uid, "profile", "info"));
+        const profileRef = doc(db, "users", user.uid, "profile", "info");
+        profileUnsub = onSnapshot(profileRef, async (profileDoc) => {
+          let role = null;
+          let tenantUid = user.uid;
+          
           if (profileDoc.exists()) {
             role = profileDoc.data().role;
+            if (profileDoc.data().tenantUid) {
+                tenantUid = profileDoc.data().tenantUid;
+            }
           }
-        } catch(e) {
-          console.error("Error fetching role:", e);
-        }
 
-        if (hasBiometricEnrolled(email)) {
-          setBiometricStatus('checking');
-          const verified = await verifyBiometric(email);
-          if (verified) {
-            setBiometricStatus('verified');
-            setCurrentUser(name);
-            setCurrentUid(user.uid);
-            setCurrentUserRole(role);
+          if (hasBiometricEnrolled(email)) {
+            if (biometricStatus !== 'verified' && biometricStatus !== 'checking' && biometricStatus !== 'failed') {
+               setBiometricStatus('checking');
+               const verified = await verifyBiometric(email);
+               if (verified) {
+                 setBiometricStatus('verified');
+                 setCurrentUser(name);
+                 setCurrentUid(tenantUid);
+                 setCurrentUserRole(role);
+               } else {
+                 setBiometricStatus('failed');
+               }
+            } else if (biometricStatus === 'verified') {
+               setCurrentUser(name);
+               setCurrentUid(tenantUid);
+               setCurrentUserRole(role);
+            }
           } else {
-            setBiometricStatus('failed');
+            setBiometricStatus('not_enrolled');
+            setCurrentUser(name);
+            setCurrentUid(tenantUid);
+            setCurrentUserRole(role);
           }
-        } else {
-          setBiometricStatus('not_enrolled');
+        }, (err) => {
+          console.error("Error fetching profile:", err);
+          // Fallback if permission denied initially
           setCurrentUser(name);
           setCurrentUid(user.uid);
-          setCurrentUserRole(role);
-        }
+        });
       } else {
         setCurrentUser(null);
         setCurrentUid(null);
@@ -245,8 +267,11 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      unsubscribe();
+      if (profileUnsub) profileUnsub();
+    };
+  }, [biometricStatus]);
 
   const handleLogout = async () => {
     try {
@@ -288,18 +313,23 @@ export default function App() {
                   let name = auth.currentUser?.displayName || auth.currentUser?.email?.split("@")[0] || "User";
                   let uid = auth.currentUser?.uid || "";
                   let role = null;
+                  let tenantUid = uid;
                   if (uid) {
                     try {
-                      const profileDoc = await getDoc(doc(db, "users", uid, "profile", "info"));
+                      const profileRef = doc(db, "users", uid, "profile", "info");
+                      const profileDoc = await getDoc(profileRef);
                       if (profileDoc.exists()) {
                         role = profileDoc.data().role;
+                        if (profileDoc.data().tenantUid) {
+                            tenantUid = profileDoc.data().tenantUid;
+                        }
                       }
                     } catch(e) {
                       console.error("Error fetching role:", e);
                     }
                   }
                   setCurrentUser(name);
-                  setCurrentUid(uid);
+                  setCurrentUid(tenantUid);
                   setCurrentUserRole(role);
                 } else {
                   setBiometricStatus('failed');
@@ -475,6 +505,7 @@ export default function App() {
                 currentUser={currentUser}
                 currentUid={currentUid}
                 initialCategory="ad-hoc"
+                currentUserRole={currentUserRole}
               />
             )}
             {activeTab === "tasks" && (
@@ -484,6 +515,7 @@ export default function App() {
                 currentUser={currentUser}
                 currentUid={currentUid}
                 initialCategory="task"
+                currentUserRole={currentUserRole}
               />
             )}
             {activeTab === "pms" && <MasterCalendarView setActiveTab={setActiveTab} currentUid={currentUid} />}
@@ -495,6 +527,7 @@ export default function App() {
                 currentUser={currentUser}
                 currentUid={currentUid}
                 initialCategory="incident"
+                currentUserRole={currentUserRole}
               />
             )}
             {activeTab === "attendance" && (
@@ -502,6 +535,9 @@ export default function App() {
             )}
             {activeTab === "inventory" && (
               <InventoryView setActiveTab={setActiveTab} isOnline={isOnline} currentUid={currentUid} globalSearchQuery={globalSearchQuery} />
+            )}
+            {activeTab === "customers" && (
+              <CustomersView currentUid={currentUid} />
             )}
             {activeTab === "trip-tickets" && (
               <TripTicketView

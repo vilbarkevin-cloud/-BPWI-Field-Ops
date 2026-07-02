@@ -428,7 +428,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="space-y-6">
              {/* 1. System Inputs */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">1. System & Target Inputs</h3>
                 
                 <div className="space-y-3">
@@ -481,7 +481,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
              </div>
 
              {/* 2. Pipe Material */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">2. Pipe Material Reference</h3>
                 <div className="flex items-center justify-between gap-4 mb-3">
                    <label className="text-sm font-semibold text-on-surface flex-1">Pipe Material</label>
@@ -506,7 +506,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
              </div>
 
              {/* 3. Elevated Water Tank */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">3. Elevated Water Tank (EWT)</h3>
                 <div className="flex items-center justify-between gap-4 mb-3">
                    <label className="text-sm font-semibold text-on-surface flex-1">Water Passes Through EWT?</label>
@@ -520,14 +520,14 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
                       <div className="flex items-center justify-between gap-2">
                          <label className="text-sm font-semibold text-on-surface">Tank Capacity</label>
                          <div className="w-1/2 relative">
-                            <input type="number" className="w-full p-2 border border-outline-variant/60 bg-white rounded text-sm font-medium pr-16 outline-none focus:border-[#e65100]" value={ewtVolGal} onChange={(e) => setEwtVolGal(Number(e.target.value))} />
+                            <input type="number" className="w-full p-2 border border-outline-variant/60 bg-surface rounded text-sm font-medium pr-16 outline-none focus:border-[#e65100]" value={ewtVolGal} onChange={(e) => setEwtVolGal(Number(e.target.value))} />
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-on-surface-variant">gallons</span>
                          </div>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                          <label className="text-sm font-semibold text-on-surface">Avg Operating Level</label>
                          <div className="w-1/2 relative">
-                            <input type="number" className="w-full p-2 border border-outline-variant/60 bg-white rounded text-sm font-medium pr-12 outline-none focus:border-[#e65100]" value={ewtLvl} onChange={(e) => setEwtLvl(Number(e.target.value))} />
+                            <input type="number" className="w-full p-2 border border-outline-variant/60 bg-surface rounded text-sm font-medium pr-12 outline-none focus:border-[#e65100]" value={ewtLvl} onChange={(e) => setEwtLvl(Number(e.target.value))} />
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-on-surface-variant">%</span>
                          </div>
                       </div>
@@ -540,7 +540,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
              </div>
 
              {/* 4. Chemical Properties */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">4. Chemical Properties</h3>
                 <div className="space-y-3">
                    <div className="flex items-center justify-between gap-4">
@@ -571,7 +571,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
              </div>
 
              {/* 7. Dosage Utility */}
-             <div className="bg-white border-t-4 border-t-[#0096c7] border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm mt-6">
+             <div className="bg-surface border-t-4 border-t-[#0096c7] border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm mt-6">
                 <h3 className="text-xs font-bold text-[#0096c7] uppercase tracking-widest border-b border-outline-variant pb-2 mb-4 flex items-center gap-2">
                    <FlaskConical className="w-4 h-4" /> Dosage Adjustment Utility
                 </h3>
@@ -580,7 +580,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
                       <label className="text-sm font-semibold text-on-surface flex-1">Water Volume</label>
                       <div className="flex gap-2 w-1/2">
                          <input type="number" className="w-full p-2 border border-outline-variant/60 bg-surface-container-low rounded text-sm font-medium outline-none focus:border-[#0096c7]" value={utilVolume} onChange={(e) => setUtilVolume(Number(e.target.value))} />
-                         <select className="p-2 border border-outline-variant/60 bg-white rounded text-sm outline-none focus:border-[#0096c7]" value={utilVolumeUnit} onChange={(e) => setUtilVolumeUnit(e.target.value as any)}>
+                         <select className="p-2 border border-outline-variant/60 bg-surface rounded text-sm outline-none focus:border-[#0096c7]" value={utilVolumeUnit} onChange={(e) => setUtilVolumeUnit(e.target.value as any)}>
                             <option value="L">L</option>
                             <option value="m3">m³</option>
                             <option value="gal">gal</option>
@@ -613,7 +613,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
           {/* Results Column */}
           <div className="space-y-6">
              {/* 5. Calculation Results */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">5. Calculation Results</h3>
                 
                 <div className="space-y-0 divide-y divide-outline-variant/40">
@@ -655,7 +655,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
              </div>
 
              {/* 6. Daily Chemical Requirement */}
-             <div className="bg-white border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
+             <div className="bg-surface border-t-4 border-t-secondary border-x border-b border-outline-variant/60 rounded-xl p-5 shadow-sm">
                 <h3 className="text-xs font-bold text-secondary uppercase tracking-widest border-b border-outline-variant pb-2 mb-4">6. Daily Chemical Requirement</h3>
                 
                 <div className="space-y-0 divide-y divide-outline-variant/40">
@@ -692,7 +692,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
        </div>
 
        {/* Full Width - Field Calibration Engine */}
-       <div className="mt-8 bg-white border border-outline rounded-xl shadow-sm overflow-hidden">
+       <div className="mt-8 bg-surface border border-outline rounded-xl shadow-sm overflow-hidden">
           <div className="bg-gradient-to-r from-secondary to-[#0a5a80] px-6 py-4 flex items-center justify-between">
              <div className="flex items-center gap-3 text-white">
                 <TrendingDown className="w-6 h-6 text-[#90caf9]" />
@@ -727,18 +727,18 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
                             {samplePts.map((pt) => (
                                <tr key={pt.id} className="hover:bg-surface-container-low transition-colors">
                                   <td className="p-2">
-                                     <input type="text" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-white focus:border-secondary outline-none text-sm" value={pt.name} onChange={(e) => updateSamplePt(pt.id, 'name', e.target.value)} />
+                                     <input type="text" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-surface focus:border-secondary outline-none text-sm" value={pt.name} onChange={(e) => updateSamplePt(pt.id, 'name', e.target.value)} />
                                   </td>
                                   <td className="p-2">
                                      <div className="flex items-center gap-1">
-                                        <input type="number" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-white focus:border-secondary outline-none text-sm font-mono" value={pt.distance} onChange={(e) => updateSamplePt(pt.id, 'distance', Number(e.target.value))} />
+                                        <input type="number" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-surface focus:border-secondary outline-none text-sm font-mono" value={pt.distance} onChange={(e) => updateSamplePt(pt.id, 'distance', Number(e.target.value))} />
                                         <button onClick={() => { setMapTargetId(pt.id); setMapPoints([]); setDrawnDist(0); setShowMapModal(true); }} className="text-[#0096c7] p-1.5 hover:bg-[#0096c7]/10 rounded" title="Draw Route on Map">
                                            <Map className="w-4 h-4"/>
                                         </button>
                                      </div>
                                   </td>
                                   <td className="p-2">
-                                     <input type="number" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-white focus:border-secondary outline-none text-sm font-mono" step="0.1" value={pt.measured} onChange={(e) => updateSamplePt(pt.id, 'measured', Number(e.target.value))} />
+                                     <input type="number" className="w-full p-2 bg-transparent border border-transparent hover:border-outline-variant rounded focus:bg-surface focus:border-secondary outline-none text-sm font-mono" step="0.1" value={pt.measured} onChange={(e) => updateSamplePt(pt.id, 'measured', Number(e.target.value))} />
                                   </td>
                                   <td className="p-2 text-center">
                                      <button onClick={() => removeSamplePt(pt.id)} className="p-1.5 text-error hover:bg-error/10 rounded">
@@ -835,7 +835,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
 
        {showMapModal && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-           <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+           <div className="bg-surface rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
              <div className="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface">
                <div>
                   <h3 className="font-bold text-lg text-on-surface">Draw Pipe Route</h3>
@@ -852,7 +852,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
                  <PolylineMeasureTool points={mapPoints} setPoints={setMapPoints} onDistanceChange={setDrawnDist} />
                </MapContainer>
                
-               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-white rounded-xl shadow-lg border border-outline-variant p-3 flex gap-4 items-center">
+               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] bg-surface rounded-xl shadow-lg border border-outline-variant p-3 flex gap-4 items-center">
                   <div className="text-center px-4">
                      <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">Total Distance</div>
                      <div className="font-mono text-2xl font-bold text-[#0096c7]">{drawnDist} <span className="text-sm">m</span></div>
@@ -890,7 +890,7 @@ export function ChlorinationView({ currentUid, currentUser, setActiveTab }: { cu
                </div>
              </div>
              {elevationData.length > 0 && (
-                <div className="h-[200px] shrink-0 bg-white border-t border-outline-variant p-4 flex flex-col">
+                <div className="h-[200px] shrink-0 bg-surface border-t border-outline-variant p-4 flex flex-col">
                    <h4 className="text-sm font-bold text-on-surface mb-2 flex items-center gap-2">
                       <Mountain className="w-4 h-4 text-[#8b5cf6]" />
                       Elevation Profile

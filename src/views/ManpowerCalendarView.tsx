@@ -91,7 +91,7 @@ export function ManpowerCalendarView({ currentUid, setActiveTab, currentUserRole
       if (snap.empty) {
         // Seed default palette
         const items = { ...defaultPalette };
-        items.ERASE = { code: 'ERASE', title: "Clear Shift", location: "Remove shift", color: "bg-white text-outline border border-dashed border-outline-variant", abbr: "✕" };
+        items.ERASE = { code: 'ERASE', title: "Clear Shift", location: "Remove shift", color: "bg-surface text-outline border border-dashed border-outline-variant", abbr: "✕" };
         setPalette(items);
         
         // Save defaults to firestore
@@ -107,7 +107,7 @@ export function ManpowerCalendarView({ currentUid, setActiveTab, currentUserRole
         snap.docs.forEach(doc => {
           items[doc.id] = { code: doc.id, ...doc.data() };
         });
-        items.ERASE = { code: 'ERASE', title: "Clear Shift", location: "Remove shift", color: "bg-white text-outline border border-dashed border-outline-variant", abbr: "✕" };
+        items.ERASE = { code: 'ERASE', title: "Clear Shift", location: "Remove shift", color: "bg-surface text-outline border border-dashed border-outline-variant", abbr: "✕" };
         setPalette(items);
       }
     });

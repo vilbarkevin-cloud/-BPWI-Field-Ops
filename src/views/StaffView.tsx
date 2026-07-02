@@ -406,12 +406,12 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
           </div>
 
           {isEditing ? (
-            <div className="flex-1 min-w-0 pr-16 flex flex-col sm:flex-row gap-2">
+            <div className="flex-1 pr-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 items-center">
               <input
                 type="text"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full sm:w-1/3 px-2 py-1.5 border border-primary focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface"
+                className="w-full px-2 py-1.5 border border-primary focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface"
                 autoFocus
                 placeholder="Name"
                 onKeyDown={(e) => {
@@ -423,8 +423,8 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
                 type="text"
                 value={editPosition}
                 onChange={(e) => setEditPosition(e.target.value)}
-                className="w-full sm:w-1/4 px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface bg-surface"
-                placeholder="Position (e.g. Technical Head)"
+                className="w-full px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface bg-surface"
+                placeholder="Position"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") saveEdit(person);
                   if (e.key === "Escape") setEditingStaffId(null);
@@ -434,7 +434,7 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
                 type="email"
                 value={editEmail}
                 onChange={(e) => setEditEmail(e.target.value)}
-                className="w-full sm:w-1/4 px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface bg-surface"
+                className="w-full px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-sm font-medium text-on-surface bg-surface"
                 placeholder="Login Email (Auth)"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") saveEdit(person);
@@ -444,7 +444,7 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
               <select
                 value={editManagerId}
                 onChange={(e) => setEditManagerId(e.target.value)}
-                className="w-full sm:w-48 px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
+                className="w-full px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
               >
                 <option value="">No Manager</option>
                 {getManagerOptions(person.id).map((mgr) => (
@@ -456,7 +456,7 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
               <select
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value)}
-                className="w-full sm:w-32 px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
+                className="w-full px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
               >
                 <option value="tech">Technical</option>
                 <option value="operations_manager">Operations Manager</option>
@@ -465,7 +465,7 @@ export function StaffView({ currentUser, currentUid, currentUserRole, setActiveT
               <select
                 value={editStatus}
                 onChange={(e) => setEditStatus(e.target.value as ActiveStatus)}
-                className="w-full sm:w-32 px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
+                className="w-full px-2 py-1.5 border border-outline-variant focus:ring-1 focus:ring-primary outline-none rounded text-xs text-on-surface bg-surface"
               >
                 <option value="Available">Available</option>
                 <option value="In Transit">In Transit</option>

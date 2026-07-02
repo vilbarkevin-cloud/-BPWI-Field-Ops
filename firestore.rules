@@ -26,10 +26,9 @@ service cloud.firestore {
     }
 
     // Validation Blueprint for Task
-    function isValidTask(data, uid) {
+    function isValidTask(data) {
       return data.keys().hasAll(['userId', 'title', 'priority', 'location', 'status', 'createdAt', 'updatedAt']) 
              && data.keys().size() >= 7
-             && data.userId == uid
              && data.title is string && data.title.size() <= 200
              && data.priority is string && data.priority.matches('^(low|medium|high)$')
              && data.location is string && data.location.size() <= 200
@@ -39,10 +38,9 @@ service cloud.firestore {
     }
 
     // Validation Blueprint for Activity
-    function isValidActivity(data, uid) {
+    function isValidActivity(data) {
       return data.keys().hasAll(['userId', 'type', 'area', 'status', 'date', 'createdAt', 'updatedAt'])
              && data.keys().size() >= 7
-             && data.userId == uid
              && data.type is string && data.type.size() <= 100
              && data.area is string && data.area.size() <= 100
              && data.status is string && data.status.size() <= 100
@@ -51,7 +49,7 @@ service cloud.firestore {
     }
 
     // Validation Blueprint for Inventory
-    function isValidInventory(data, uid) {
+    function isValidInventory(data) {
       return data.keys().hasAll(['name', 'category', 'currentStock', 'unit', 'minThreshold', 'lastUpdated', 'createdAt', 'updatedAt', 'userId'])
              && data.name is string
              && data.category is string
@@ -59,7 +57,6 @@ service cloud.firestore {
              && data.unit is string
              && data.minThreshold is number
              && data.lastUpdated is string
-             && data.userId == uid
              && data.createdAt is timestamp
              && data.updatedAt is timestamp;
     }
@@ -77,26 +74,23 @@ service cloud.firestore {
     }
 
     match /users/{userId}/workLogs/{logId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     
     match /users/{userId}/tasks/{taskId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read: if isSignedIn();
       
       allow create: if isSignedIn() 
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
                     && isValidId(taskId)
                     && isValidId(userId)
-                    && isValidTask(incoming(), request.auth.uid)
+                    && isValidTask(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
                     
       allow update: if isSignedIn()
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
-                    && existing().userId == request.auth.uid
                     && isValidId(taskId)
                     && isValidId(userId)
-                    && isValidTask(incoming(), request.auth.uid)
+                    && isValidTask(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time
                     && (
@@ -104,34 +98,32 @@ service cloud.firestore {
                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'priority', 'location', 'description', 'assignedTo', 'deadline', 'isSynced', 'status', 'updatedAt', 'photoUrl', 'consumedParts', 'linkedActivity', 'joNumber', 'accountNumber', 'accountName', 'completedAt', 'tatJustification', 'notes', 'linkedAssetId', 'updatedBy'])
                     );
 
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid)) && existing().userId == request.auth.uid;
+      allow delete: if isSignedIn();
     }
 
     match /users/{userId}/profile/{docId} {
        allow read: if isSignedIn();
-       allow write: if isSignedIn() && request.auth.uid == userId;
+       allow write: if isSignedIn();
     }
 
     match /users/{userId}/inventory/{itemId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read: if isSignedIn();
       
       allow create: if isSignedIn() 
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
                     && isValidId(itemId)
                     && isValidId(userId)
-                    && isValidInventory(incoming(), request.auth.uid)
+                    && isValidInventory(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
                     
       allow update: if isSignedIn()
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
                     && isValidId(itemId)
                     && isValidId(userId)
-                    && isValidInventory(incoming(), request.auth.uid)
+                    && isValidInventory(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time;
 
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow delete: if isSignedIn();
     }
 
     match /{path=**}/tripTickets/{ticketId} {
@@ -139,6 +131,10 @@ service cloud.firestore {
     }
     
     match /{path=**}/attendance/{attendanceId} {
+      allow read: if isSignedIn() && isAdmin(request.auth.uid);
+    }
+
+    match /{path=**}/incidents/{incidentId} {
       allow read: if isSignedIn() && isAdmin(request.auth.uid);
     }
 
@@ -153,27 +149,23 @@ service cloud.firestore {
     }
 
     match /users/{userId}/tripTickets/{ticketId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
 
     match /users/{userId}/activities/{activityId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read: if isSignedIn();
       
       allow create: if isSignedIn() 
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
                     && isValidId(activityId)
                     && isValidId(userId)
-                    && isValidActivity(incoming(), request.auth.uid)
+                    && isValidActivity(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
                     
       allow update: if isSignedIn()
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
-                    && existing().userId == request.auth.uid
                     && isValidId(activityId)
                     && isValidId(userId)
-                    && isValidActivity(incoming(), request.auth.uid)
+                    && isValidActivity(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time
                     && (
@@ -181,41 +173,43 @@ service cloud.firestore {
                       incoming().diff(existing()).affectedKeys().hasOnly(['type', 'area', 'siteOrWell', 'blockLot', 'staff', 'date', 'status', 'isSynced', 'details', 'updatedAt', 'title', 'data'])
                     );
 
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid)) && existing().userId == request.auth.uid;
+      allow delete: if isSignedIn();
     }
 
     match /users/{userId}/attendance/{attendanceId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/areas/{areaId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/staff/{staffId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
+    }
+    match /users/{userId}/customers/{customerId} {
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/activityTypes/{typeId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/incidents/{incidentId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read: if isSignedIn();
       allow create: if isSignedIn() 
-                    && (request.auth.uid == userId || isAdmin(request.auth.uid))
                     && isValidId(incidentId)
                     && isValidIncident(incoming());
-      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid)) && isValidIncident(incoming());
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow update: if isSignedIn() && isValidIncident(incoming());
+      allow delete: if isSignedIn();
     }
     match /users/{userId}/CalendarEvents/{eventId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/ManpowerPalette/{paletteId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/huddle_reports/{reportId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
     match /users/{userId}/handovers/{handoverId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin(request.auth.uid));
+      allow read, write: if isSignedIn();
     }
   }
 }

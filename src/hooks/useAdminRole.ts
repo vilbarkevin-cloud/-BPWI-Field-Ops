@@ -25,7 +25,9 @@ export function useAdminRole(uid: string | null) {
         let promise = pendingRequests.get(uid);
         if (!promise) {
           promise = getDoc(doc(db, "users", uid, "profile", "info")).then(snap => {
-            const role = snap.exists() ? snap.data().role : null;
+            const data = snap.exists() ? snap.data() : null;
+            const role = data?.role;
+            
             return role === "admin" || role === "operations_manager" || (typeof role === 'string' && role.toLowerCase().includes('head'));
           });
           pendingRequests.set(uid, promise);

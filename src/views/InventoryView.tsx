@@ -252,13 +252,13 @@ export function InventoryView({
               <input
                 type="text"
                 placeholder="Search items, categories or IDs..."
-                className="w-full pl-9 pr-4 py-2 bg-white border border-outline-variant rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-body-md"
+                className="w-full pl-9 pr-4 py-2 bg-surface border border-outline-variant rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-body-md"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <button 
-              className="btn btn-secondary bg-white flex items-center gap-2 justify-center"
+              className="btn btn-secondary bg-surface flex items-center gap-2 justify-center"
               onClick={() => {
                 const scannerDiv = document.createElement("div");
                 scannerDiv.id = "scanner-container";
@@ -307,7 +307,7 @@ export function InventoryView({
               <Camera className="w-4 h-4" />
               <span>Scan barcode</span>
             </button>
-            <button className="btn btn-secondary bg-white flex items-center gap-2 justify-center">
+            <button className="btn btn-secondary bg-surface flex items-center gap-2 justify-center">
               <Filter className="w-4 h-4" />
               <span>Filter</span>
             </button>
