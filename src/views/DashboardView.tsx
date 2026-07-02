@@ -1,3 +1,5 @@
+import * as htmlToImage from 'html-to-image';
+import jsPDF from 'jspdf';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ClipboardList,
@@ -2966,7 +2968,13 @@ export function DashboardView({
                   <button
                     onClick={() => {
                       setIsExportModalOpen(false);
-                      setTimeout(() => window.print(), 300);
+                      setTimeout(async () => {
+                        try {
+                                                                              window.print();
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }, 300);
                     }}
                     className="w-full px-4 py-3 text-sm font-semibold text-on-surface border border-outline hover:bg-surface-container-low rounded-xl transition-colors flex items-center gap-3"
                   >

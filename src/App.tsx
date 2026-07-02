@@ -45,6 +45,7 @@ import { hasBiometricEnrolled, verifyBiometric, isBiometricAvailable, registerBi
 import { haptics } from "./utils/haptics";
 
 import { useWakeLockManager } from "./utils/WakeLockManager";
+import { isLowStock } from "./utils/inventory";
 
 function renderHumanReadableDiff(localData: any, remoteData: any) {
   const local = localData || {};
@@ -183,10 +184,7 @@ export default function App() {
     const unsubInv = onSnapshot(
       invQ,
       (snap) => {
-        lowStock = snap.docs.filter((d) => {
-          const item = d.data();
-          return item.minThreshold != null && item.minThreshold > 0 && item.currentStock <= item.minThreshold;
-        }).length;
+        lowStock = snap.docs.filter((d) => isLowStock(d.data() as any)).length;
         setNotificationCount(openIncidents + lowStock);
       },
       (error: any) => {
@@ -202,6 +200,13 @@ export default function App() {
 
   const [biometricStatus, setBiometricStatus] = useState<'checking' | 'verified' | 'failed' | 'not_enrolled' | 'idle'>('idle');
   const [userEmailForBiometric, setUserEmailForBiometric] = useState<string | null>(null);
+
+  // Tracks the latest biometricStatus without forcing the auth effect below to
+  // re-subscribe every time it changes (see biometricStatusRef usage below).
+  const biometricStatusRef = React.useRef(biometricStatus);
+  useEffect(() => {
+    biometricStatusRef.current = biometricStatus;
+  }, [biometricStatus]);
 
   useEffect(() => {
     let profileUnsub: (() => void) | null = null;
@@ -230,7 +235,8 @@ export default function App() {
           }
 
           if (hasBiometricEnrolled(email)) {
-            if (biometricStatus !== 'verified' && biometricStatus !== 'checking' && biometricStatus !== 'failed') {
+            const status = biometricStatusRef.current;
+            if (status !== 'verified' && status !== 'checking' && status !== 'failed') {
                setBiometricStatus('checking');
                const verified = await verifyBiometric(email);
                if (verified) {
@@ -241,7 +247,7 @@ export default function App() {
                } else {
                  setBiometricStatus('failed');
                }
-            } else if (biometricStatus === 'verified') {
+            } else if (status === 'verified') {
                setCurrentUser(name);
                setCurrentUid(tenantUid);
                setCurrentUserRole(role);
@@ -271,7 +277,12 @@ export default function App() {
       unsubscribe();
       if (profileUnsub) profileUnsub();
     };
-  }, [biometricStatus]);
+    // Intentionally NOT depending on biometricStatus: the ref above lets us
+    // read its latest value without tearing down and re-creating the Firebase
+    // Auth + profile listeners every time biometric verification progresses
+    // through its states (idle -> checking -> verified/failed).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -381,7 +392,7 @@ export default function App() {
         />
       </div>
 
-      <main className="flex-1 min-w-0 md:ml-64 flex flex-col h-full overflow-y-auto w-full pb-[68px] md:pb-0 relative printable-area">
+      <main className="flex-1 min-w-0 md:ml-64 flex flex-col h-full overflow-y-auto print:overflow-visible print:h-auto w-full pb-[68px] md:pb-0 relative printable-area">
         <div className="hide-on-print">
           <TopBar
             onMenuClick={() => setIsMobileMenuOpen(true)}

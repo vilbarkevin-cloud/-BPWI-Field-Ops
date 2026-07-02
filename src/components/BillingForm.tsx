@@ -1,3 +1,5 @@
+import * as htmlToImage from 'html-to-image';
+import jsPDF from 'jspdf';
 import React, { useState, useRef, useMemo, useEffect } from "react";
 import { PrintableBilling, BillingData } from "./PrintableBilling";
 import { Camera, Map, Printer, Plus, Trash } from "lucide-react";
@@ -186,8 +188,14 @@ export function BillingForm({ currentUid }: { currentUid?: string | null }) {
     setUsedMaterials(newM);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    try {
+      const printElem = document.getElementById("billing-print-area");
+      if (!printElem) return;
+                  window.print();
+    } catch(e) {
+      console.error("PDF Error", e);
+    }
   };
 
   return (
@@ -457,7 +465,7 @@ export function BillingForm({ currentUid }: { currentUid?: string | null }) {
         </div>
       </div>
 
-      <div className="hidden print:block">
+      <div id="billing-print-area" className="fixed top-0 left-[-2000px] w-[800px] bg-white z-[-50] text-black print:static print:w-auto print:left-auto print:z-auto">
         <PrintableBilling ref={printRef} data={currentData} />
       </div>
     </div>

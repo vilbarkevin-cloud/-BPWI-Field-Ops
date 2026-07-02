@@ -20,6 +20,7 @@ import {
   query,
   serverTimestamp,
 } from "firebase/firestore";
+import { isLowStock } from "../utils/inventory";
 
 interface InventoryItem {
   id: string;
@@ -63,6 +64,44 @@ export function InventoryView({
   const [currentStock, setCurrentStock] = useState("");
   const [unit, setUnit] = useState("pcs");
   const [minThreshold, setMinThreshold] = useState("");
+
+  // Update Stock modal state
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [editStock, setEditStock] = useState("");
+  const [editThreshold, setEditThreshold] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const openUpdateModal = (item: InventoryItem) => {
+    setEditingItem(item);
+    setEditStock(String(item.currentStock ?? 0));
+    setEditThreshold(String(item.minThreshold ?? 0));
+  };
+
+  const handleUpdateStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUid || !editingItem) return;
+
+    setIsSavingEdit(true);
+    try {
+      const docRef = doc(db, `users/${currentUid}/inventory`, editingItem.id);
+      await setDoc(
+        docRef,
+        {
+          currentStock: Number(editStock) || 0,
+          minThreshold: Number(editThreshold) || 0,
+          lastUpdated: new Date().toISOString().split("T")[0],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      setEditingItem(null);
+    } catch (error) {
+      console.error("Failed to update inventory item", error);
+      alert("Failed to update item. " + (isOnline ? "Please try again." : "It will be saved once you're back online if your browser supports offline persistence."));
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   useEffect(() => {
     if (!currentUid) return;
@@ -242,7 +281,7 @@ export function InventoryView({
             <AlertCircle className="w-5 h-5 text-error" />
           </div>
           <p className="font-display text-[2rem] font-bold text-error">
-            {inventory.filter((i) => i.currentStock <= i.minThreshold).length}
+            {inventory.filter(isLowStock).length}
           </p>
         </div>
         <div className="md:col-span-2 bg-surface-variant/30 border border-outline-variant rounded-lg p-2.5 flex flex-col justify-center">
@@ -342,7 +381,7 @@ export function InventoryView({
             </thead>
             <tbody>
               {filteredInventory.slice(0, visibleCount).map((item) => {
-                const isLowStock = item.currentStock <= item.minThreshold;
+                const isLow = isLowStock(item);
                 return (
                   <tr
                     key={item.id}
@@ -368,10 +407,10 @@ export function InventoryView({
                       <div
                         className={
                           "text-xs font-semibold flex items-center gap-2 " +
-                          (isLowStock ? "text-error" : "text-on-surface")
+                          (isLow ? "text-error" : "text-on-surface")
                         }
                       >
-                        {isLowStock && <AlertCircle className="w-4 h-4" />}
+                        {isLow && <AlertCircle className="w-4 h-4" />}
                         {item.currentStock} {item.unit}
                       </div>
                     </td>
@@ -380,7 +419,8 @@ export function InventoryView({
                     </td>
                     <td className="p-2.5 text-right">
                       <button
-                        className={`btn ${isLowStock ? "btn-danger" : "btn-secondary"} py-1 px-3 text-sm`}
+                        onClick={() => openUpdateModal(item)}
+                        className={`btn ${isLow ? "btn-danger" : "btn-secondary"} py-1 px-3 text-sm`}
                       >
                         Update
                       </button>
@@ -557,6 +597,79 @@ export function InventoryView({
                 className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center min-w-[120px]"
               >
                 Add Item
+              </button>
+            </div>
+          </form>
+        </div>,
+        document.body
+      )}
+
+      {editingItem && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <form onSubmit={handleUpdateStock} className="bg-surface rounded-xl shadow-2xl w-full max-w-[420px] flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest shrink-0">
+              <h2 className="font-display text-title-lg font-bold text-on-surface">Update Stock</h2>
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="p-2 hover:bg-surface-variant rounded-full text-on-surface-variant transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
+              <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
+                <p className="text-sm font-bold text-on-surface">{editingItem.name}</p>
+                <p className="text-xs text-on-surface-variant font-mono">{editingItem.id}</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-on-surface-variant">
+                    Current Stock ({editingItem.unit})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    autoFocus
+                    value={editStock}
+                    onChange={(e) => setEditStock(e.target.value)}
+                    className="p-2.5 bg-surface-container-lowest border border-outline-variant rounded-md focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-on-surface-variant">
+                    Min. Threshold ({editingItem.unit})
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editThreshold}
+                    onChange={(e) => setEditThreshold(e.target.value)}
+                    className="p-2.5 bg-surface-container-lowest border border-outline-variant rounded-md focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-outline-variant bg-surface shrink-0 flex gap-3 justify-end items-center">
+              <button
+                type="button"
+                onClick={() => setEditingItem(null)}
+                className="px-5 py-2.5 rounded-lg text-sm font-bold text-on-surface-variant border border-outline-variant hover:bg-surface-variant transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingEdit || editStock === "" || editThreshold === ""}
+                className="px-5 py-2.5 rounded-lg text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center min-w-[100px]"
+              >
+                {isSavingEdit ? "Saving..." : "Save"}
               </button>
             </div>
           </form>

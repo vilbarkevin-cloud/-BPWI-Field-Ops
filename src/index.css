@@ -326,9 +326,12 @@
     box-shadow: none !important;
     border: none !important;
   }
+  html,
   body,
-  main,
-  #root {
+  #root,
+  main {
     background: white !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 }

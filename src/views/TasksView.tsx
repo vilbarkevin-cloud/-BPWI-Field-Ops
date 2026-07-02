@@ -1,3 +1,5 @@
+import * as htmlToImage from 'html-to-image';
+import jsPDF from 'jspdf';
 import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle,
@@ -21,6 +23,8 @@ import {
   MicOff,
   RefreshCw,
   ShieldAlert,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import { useNetworkInfo } from "../utils/useNetworkInfo";
 import { useProximityAlert } from "../utils/useProximityAlert";
@@ -34,10 +38,12 @@ import {
   query,
   updateDoc,
   serverTimestamp,
+  getDoc,
   getDocs,
   where,
   orderBy,
   limit,
+  deleteDoc,
 } from "firebase/firestore";
 import { defaultStaff as dataStoreDefaultStaff } from "../lib/dataStore";
 import { ACTIVITY_TYPES } from "../lib/activityTypes";
@@ -46,7 +52,9 @@ import { haptics } from "../utils/haptics";
 
 import { useSyncQueue } from "../utils/useSyncQueue";
 import { PrintableMeterTest } from "../components/PrintableMeterTest";
+import { PrintableTaskHistory, PrintableTaskHistoryData } from "../components/PrintableTaskHistory";
 import { compressImage } from "../utils/imageProcessor";
+import { get } from "idb-keyval";
 
 export type TaskPriority = "high" | "medium" | "low";
 export type TaskStatus = "pending" | "in-progress" | "completed";
@@ -62,6 +70,7 @@ export interface Task {
   deadline: string;
   estimatedHours?: number;
   completedAt?: string; // To track efficiency
+  updatedAt?: string;
   createdAt?: string; // To track TAT
   tatJustification?: string;
   description: string;
@@ -101,9 +110,9 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
   const { syncData, isSyncing, enqueueAction } = useSyncQueue(currentUid);
   const [isPulling, setIsPulling] = useState(false);
   const [pullY, setPullY] = useState(0);
-  const [reprintData, setReprintData] = useState<any>(null);
-  const printRef = useRef<HTMLDivElement>(null);
-  
+  const [printPreviewData, setPrintPreviewData] = useState<PrintableTaskHistoryData | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
   const startY = useRef(0);
   const currentY = useRef(0);
 
@@ -144,8 +153,11 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
   }, [globalSearchQuery]);
   const { showToast } = useToast();
 
-  const handleReprintTask = async (task: Task) => {
+  const handlePrintTask = async (task: Task) => {
     if (!currentUid) return;
+    
+    let match: any = null;
+    
     try {
       // Fetch ALL activities in case 'type' is not exactly 'meter_test' or something
       const q1 = query(
@@ -164,31 +176,51 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
           return t2 - t1;
       });
 
-      let match = activities.find(a => 
+      match = activities.find(a => 
         (a.taskId && a.taskId === task.id) ||
-        (task.accountNumber && a.details?.accountNumber && a.details?.accountNumber.includes(task.accountNumber)) ||
-        (task.accountName && a.details?.testAccountName && a.details?.testAccountName.includes(task.accountName))
+        (task.accountNumber && a.details?.accountNumber && String(a.details.accountNumber).includes(String(task.accountNumber))) ||
+        (task.accountName && a.details?.testAccountName && String(a.details.testAccountName).toLowerCase().includes(String(task.accountName).toLowerCase()))
       );
 
       // Fallback: If no strict match, check if there's any meter test on the same day for this user
       if (!match && activities.length > 0) {
         match = activities[0];
       }
-
-      if (match) {
-        setReprintData(match);
-        setTimeout(() => {
-          window.print();
-        }, 500);
-      } else {
-        // Log to console so we can see what activities were returned
-        console.log("No meter_test activities found. Total activities fetched: ", snapshot.docs.length);
-        alert(`No corresponding meter test form found. (Total activities: ${snapshot.docs.length})`);
-      }
     } catch (error) {
-      console.error(error);
-      showToast("Error finding form", "error");
+      console.warn("Failed fetching activities from firestore. Continuing to offline check.", error);
     }
+
+    // If still not found, check local offline queue (watsanActivities)
+    if (!match) {
+      try {
+        const localActs = await get("watsanActivities") || [];
+        const localMeterTests = localActs.filter((a: any) => a.type === 'meter_test');
+        match = localMeterTests.find((a: any) => 
+          (a.taskId && a.taskId === task.id) ||
+          (task.accountNumber && a.details?.accountNumber && String(a.details.accountNumber).includes(String(task.accountNumber))) ||
+          (task.accountName && a.details?.testAccountName && String(a.details.testAccountName).toLowerCase().includes(String(task.accountName).toLowerCase()))
+        );
+      } catch (e) {
+        console.warn("Failed reading from local IDB", e);
+      }
+    }
+
+    // If still no match (e.g. no activity was ever created, or network failed), generate a fallback so they can print a blank form for field use
+    if (!match) {
+      match = {
+        date: task.completedAt || task.createdAt || new Date().toISOString(),
+        siteOrWell: task.location || task.facility || task.site || "",
+        area: task.facility || "",
+        blockLot: task.blockLot || "",
+        details: {
+          testAccountName: task.accountName || "",
+          accountNumber: task.accountNumber || "",
+        },
+        staff: task.assignedTo ? [task.assignedTo] : []
+      };
+    }
+
+    setPrintPreviewData({ task, activity: match });
   };
   const { isLowDataMode } = useNetworkInfo();
 
@@ -235,13 +267,6 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
     setNewTask(updatedTask);
   };
 
-  // Modal state
-  useEffect(() => {
-    const handleOpenNewTask = () => setIsModalOpen(true);
-    window.addEventListener("open-new-task", handleOpenNewTask);
-    return () => window.removeEventListener("open-new-task", handleOpenNewTask);
-  }, []);
-
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [localTab, setLocalTab] = useState<'active' | 'history'>('active');
   const [isSubmittingTask, setIsSubmittingTask] = useState<string | null>(null);
@@ -259,12 +284,85 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
     accountName: "",
   });
 
+  // Autofill accountName from Customer Database
+  useEffect(() => {
+    if (newTask.accountNumber && newTask.accountNumber.length >= 6 && currentUid) {
+      const timer = setTimeout(async () => {
+        try {
+          const docRef = doc(db, `users/${currentUid}/customers`, newTask.accountNumber as string);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.accountName && !newTask.accountName) {
+              setNewTask(prev => ({ ...prev, accountName: data.accountName }));
+            }
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [newTask.accountNumber, currentUid]);
+
+  // Modal state
+  useEffect(() => {
+    if (!newTask.joNumber || !currentUid) {
+      setJoValidationMessage(null);
+      return;
+    }
+    const checkJo = async () => {
+      setIsCheckingJo(true);
+      try {
+        const q = query(collection(db, `users/${currentUid}/tasks`), where("joNumber", "==", newTask.joNumber), limit(1));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setJoValidationMessage("Job Order ID already exists");
+        } else {
+          setJoValidationMessage(null);
+        }
+      } catch (err) {
+        console.error("Error checking JO:", err);
+      } finally {
+        setIsCheckingJo(false);
+      }
+    };
+    const timer = setTimeout(checkJo, 500);
+    return () => clearTimeout(timer);
+  }, [newTask.joNumber, currentUid]);
+
+  const handleOpenNewTask = () => {
+    setEditingTaskId(null);
+    setNewTask({
+      title: "",
+      priority: "medium",
+      location: "",
+      deadline: "",
+      estimatedHours: undefined,
+      description: "",
+      assignedTo: "Unassigned",
+      status: "pending",
+      linkedActivity: "",
+      joNumber: "",
+      accountNumber: "",
+      accountName: "",
+    });
+    setIsModalOpen(true);
+  };
+
+  useEffect(() => {
+    window.addEventListener("open-new-task", handleOpenNewTask);
+    return () => window.removeEventListener("open-new-task", handleOpenNewTask);
+  }, []);
+
   const [taskPhotos, setTaskPhotos] = useState<Record<string, string>>({});
   const [taskParts, setTaskParts] = useState<
     Record<string, { itemId: string; quantity: number }[]>
   >({});
   const [taskNotes, setTaskNotes] = useState<Record<string, string>>({});
   const [taskLinkedAsset, setTaskLinkedAsset] = useState<Record<string, string>>({});
+  const [joValidationMessage, setJoValidationMessage] = useState<string | null>(null);
+  const [isCheckingJo, setIsCheckingJo] = useState(false);
   const [isRecording, setIsRecording] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
@@ -332,6 +430,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
             estimatedHours: data.estimatedHours,
             completedAt: data.completedAt,
             createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt,
             tatJustification: data.tatJustification,
             description: data.description,
             assignedTo: data.assignedTo,
@@ -379,13 +478,31 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
     setOpenTaskId(openTaskId === id ? null : id);
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    if (!currentUid) return;
+    if (confirm("Are you sure you want to delete this task?")) {
+      try {
+        if (navigator.onLine) {
+          await deleteDoc(doc(db, `users/${currentUid}/tasks`, taskId));
+          showToast("Task deleted successfully", "success");
+        } else {
+          showToast("Cannot delete task while offline", "error");
+        }
+      } catch (e) {
+        console.error(e);
+        showToast("Error deleting task", "error");
+      }
+    }
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title || !newTask.location || !currentUid) {
       alert("Title and Area/Location are required.");
       return;
     }
-    const taskId = `task-${Date.now()}`;
+
+    const taskId = editingTaskId || `task-${Date.now()}`;
     const taskDocRef = doc(db, `users/${currentUid}/tasks`, taskId);
 
     const taskPayload = {
@@ -400,7 +517,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
       estimatedHours: newTask.estimatedHours || null,
       description: newTask.description || "",
       assignedTo: newTask.assignedTo || "Unassigned",
-      status: "pending",
+      status: newTask.status || "pending",
       linkedActivity: newTask.linkedActivity || "",
       joNumber: newTask.joNumber || "",
       accountNumber: newTask.accountNumber || "",
@@ -412,15 +529,15 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
       if (navigator.onLine) {
         await setDoc(taskDocRef, {
            ...taskPayload,
-           createdAt: serverTimestamp(),
-           updatedAt: serverTimestamp(),
-        });
-        showToast("Task created successfully", "success");
+           ...(editingTaskId ? { updatedAt: serverTimestamp() } : { createdAt: serverTimestamp(), updatedAt: serverTimestamp() }),
+        }, { merge: true });
+        showToast(editingTaskId ? "Task updated successfully" : "Task created successfully", "success");
       } else {
         await enqueueAction("watsanTasks", { id: taskId, ...taskPayload, isSynced: false, createdAt: new Date().toISOString() });
-        showToast("Offline: Task queued for synchronization", "warning");
+        showToast(editingTaskId ? "Offline: Task update queued" : "Offline: Task queued for synchronization", "warning");
       }
       setIsModalOpen(false);
+      setEditingTaskId(null);
       setNewTask({
         title: "",
         priority: "medium",
@@ -437,7 +554,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
       });
     } catch (err) {
       console.error(err);
-      showToast("Error creating task", "error");
+      showToast(editingTaskId ? "Error updating task" : "Error creating task", "error");
     }
   };
 
@@ -745,7 +862,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
 
         {/* Task Detail Drawer */}
         {openTaskId === task.id && (
-          <div className="mt-4 pt-4 border-t border-outline-variant grid grid-cols-1 md:grid-cols-2 gap-lg relative">
+          <div className="mt-4 pt-4 border-t border-outline-variant flex flex-col gap-4 relative">
             <div>
               {(task.joNumber || task.accountNumber || task.accountName) && (
                 <div className="mb-4 bg-surface-variant/30 rounded-lg p-3 text-body-md border border-outline-variant/30">
@@ -761,8 +878,10 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                 {task.description}
               </p>
 
+              </div>
+            <div>
               {task.status !== "completed" && (
-                <div className="bg-surface-container rounded-lg p-4 flex flex-col items-center justify-center text-center mt-4">
+                <div className="bg-surface-container rounded-lg p-4 flex flex-col items-center justify-center text-center">
                   <p className="text-body-md text-on-surface mb-4">
                     Tasks are now completed by logging a Field Activity (Ad-Hoc).
                   </p>
@@ -798,12 +917,12 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                         <span className="font-semibold text-on-surface">Created:</span> {task.createdAt ? new Date(task.createdAt).toLocaleString() : 'Unknown'}
                       </p>
                       <p className="text-on-surface-variant mt-1">
-                        <span className="font-semibold text-on-surface">Completed:</span> {task.completedAt ? new Date(task.completedAt).toLocaleString() : 'Unknown'}
+                        <span className="font-semibold text-on-surface">Completed:</span> {task.completedAt ? new Date(task.completedAt).toLocaleString() : (task.status === "completed" && task.updatedAt ? new Date(task.updatedAt).toLocaleString() : 'Unknown')}
                       </p>
-                      {task.createdAt && task.completedAt && (
+                      {task.createdAt && (task.completedAt || task.updatedAt) && (
                         <p className="text-on-surface-variant mt-1">
                           <span className="font-semibold text-on-surface">Turn Around Time:</span> {
-                            ((new Date(task.completedAt).getTime() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60)).toFixed(1)
+                            ((new Date(task.completedAt || task.updatedAt || task.createdAt).getTime() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60)).toFixed(1)
                           } hours
                         </p>
                       )}
@@ -834,18 +953,40 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                         </div>
                       )}
                     </div>
-                    {(task.linkedActivity === 'meter_test' || (task.title && task.title.toLowerCase().includes('meter test'))) && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReprintTask(task);
-                        }}
-                        className="btn-primary text-xs px-3 py-1"
-                      >
-                        Reprint Form
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintTask(task);
+                      }}
+                      className="btn-primary text-xs px-3 py-1"
+                    >
+                      {(task.linkedActivity === 'meter_test' || (task.title && task.title.toLowerCase().includes('meter test'))) ? 'Print Meter Test Result' : 'Print Form'}
+                    </button>
                   </div>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="mt-4 flex gap-2 justify-end border-t border-outline-variant pt-4">
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      setEditingTaskId(task.id); 
+                      setNewTask(task); 
+                      setIsModalOpen(true); 
+                    }}
+                    className="btn-secondary text-xs px-3 py-1"
+                  >
+                    <Edit2 className="w-3 h-3 mr-1 inline-block" /> Edit
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTask(task.id);
+                    }}
+                    className="btn-secondary text-xs px-3 py-1 text-error border-error/50 hover:bg-error-container"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1 inline-block" /> Delete
+                  </button>
                 </div>
               )}
             </div>
@@ -889,7 +1030,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
             <button
               onClick={() => {
                 haptics.tap();
-                setIsModalOpen(true);
+                handleOpenNewTask();
               }}
               className="btn-primary px-4 py-1.5 text-sm"
             >
@@ -945,7 +1086,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
               <AlertTriangle className="w-[18px] h-[18px]" />
               HIGH PRIORITY ({highTasks.length})
             </h3>
-            <div className="grid grid-cols-1 gap-md">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
               {paginatedHigh.map(renderTask)}
             </div>
           </div>
@@ -961,7 +1102,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
               <ClipboardX className="w-[18px] h-[18px]" />
               MEDIUM PRIORITY ({mediumTasks.length})
             </h3>
-            <div className="grid grid-cols-1 gap-md">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
               {paginatedMedium.map(renderTask)}
             </div>
           </div>
@@ -974,7 +1115,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
               <ClipboardCheck className="w-[18px] h-[18px]" />
               LOW PRIORITY ({lowTasks.length})
             </h3>
-            <div className="grid grid-cols-1 gap-md">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
               {paginatedLow.map(renderTask)}
             </div>
           </div>
@@ -995,7 +1136,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
               <button
                 onClick={() => {
                   haptics.tap();
-                  setIsModalOpen(true);
+                  handleOpenNewTask();
                 }}
                 className="btn-primary py-2 px-6"
               >
@@ -1064,13 +1205,13 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
         </div>
       </section>
 
-      {/* Create Task Modal */}
+      {/* Create/Edit Task Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm">
           <div className="bg-surface w-full max-w-[512px] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
             <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface">
               <h3 className="font-headline-sm font-semibold text-lg text-on-surface">
-                Create New Task
+                {editingTaskId ? "Edit Task" : "Create New Task"}
               </h3>
               <button
                 type="button"
@@ -1124,9 +1265,10 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                       onChange={(e) =>
                         setNewTask({ ...newTask, joNumber: e.target.value })
                       }
-                      className="form-input"
+                      className={`form-input ${joValidationMessage ? "error border-error bg-error-container" : ""}`}
                       placeholder="e.g. JO-10234"
                     />
+                    {joValidationMessage && <p className="text-error text-xs mt-1">{joValidationMessage}</p>}
                   </div>
                   <div className="form-group flex flex-col gap-1.5">
                     <label className="text-label-md font-semibold text-on-surface">
@@ -1306,8 +1448,8 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary px-6">
-                  Create Task
+                <button type="submit" disabled={!!joValidationMessage || isCheckingJo} className="btn-primary px-6">
+                  {isCheckingJo ? 'Checking...' : (editingTaskId ? 'Save Changes' : 'Create Task')}
                 </button>
               </div>
             </form>
@@ -1315,50 +1457,80 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
         </div>
       )}
 
-      {/* Hidden PDF Printable Test Area */}
-      {reprintData && (
-        <div className="hidden print:block">
-          <PrintableMeterTest
-            data={{
-              account: reprintData.details?.testAccountName || reprintData.details?.accountNumber || "",
-              date: new Date(reprintData.date).toLocaleDateString(),
-              projectAddress: `${reprintData.siteOrWell || reprintData.area} ${reprintData.blockLot ? "- " + reprintData.blockLot : ""}`,
-              natureOfTest: reprintData.details?.testNature || "",
-              paymentDetails: "",
-              meterBrand: reprintData.details?.meterBrand || "",
-              meterSerialNumber: reprintData.details?.meterSerialNumber || "",
-              volumeOfWater: 30, // 3 x 10
-              natureOfMeter: reprintData.details?.meterNature || "",
-              reading1_init: Number(reprintData.details?.currentReading || 0),
-              reading1_final: Number(reprintData.details?.reading1 || 0),
-              reading2_init: Number(reprintData.details?.reading1 || 0),
-              reading2_final: Number(reprintData.details?.reading2 || 0),
-              reading3_init: Number(reprintData.details?.reading2 || 0),
-              reading3_final: Number(reprintData.details?.reading3 || 0),
-              error1: (((Number(reprintData.details?.reading1 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.01) - 1) * 100,
-              error2: (((Number(reprintData.details?.reading2 || 0) - Number(reprintData.details?.reading1 || 0)) / 0.01) - 1) * 100,
-              error3: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.reading2 || 0)) / 0.01) - 1) * 100,
-              avgError: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100,
-              testingResults:
-                (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
-                  ? "Fast Moving"
-                  : (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
-                    ? "Slow Moving"
-                    : "Passed",
-              recommendation:
-                Math.abs((((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
-                  ? "Replace"
-                  : "Retain",
-              testedBy: (reprintData.staff || []).join(", "),
-              witnessedBy: reprintData.details?.witnessedBy || "",
-              witnessSignatureImg: reprintData.details?.witnessSignature || undefined,
-              checkedBy: "HERNAN TALAVERA",
-              finalDecision: "",
-            }}
-            ref={printRef}
-          />
+      {/* Print Preview Modal */}
+      {printPreviewData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 print:bg-transparent print:static print:z-auto">
+          <div className="bg-white w-[850px] max-w-[95vw] max-h-[95vh] rounded-2xl shadow-xl flex flex-col overflow-hidden print:w-auto print:max-w-none print:max-h-none print:rounded-none print:shadow-none print:bg-transparent">
+            
+            {/* Modal Header - Hidden when printing */}
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 hide-on-print">
+              <h2 className="text-xl font-bold text-gray-800">Print Preview</h2>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setPrintPreviewData(null)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 font-medium transition-colors flex items-center gap-2"
+                >
+                  Confirm & Print
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body / Printable Content */}
+            <div className="p-6 overflow-y-auto print:overflow-visible print:p-0">
+               {(printPreviewData.activity?.type === 'meter_test' || printPreviewData.task?.linkedActivity === 'meter_test' || (printPreviewData.task?.title && printPreviewData.task.title.toLowerCase().includes('meter test'))) ? (
+                  <PrintableMeterTest
+                    data={{
+                      jobOrderNumber: printPreviewData.task?.joNumber || printPreviewData.task?.id || "",
+                      accountName: printPreviewData.activity?.details?.testAccountName || printPreviewData.task?.accountName || "",
+                      accountNumber: printPreviewData.activity?.details?.accountNumber || printPreviewData.task?.accountNumber || "",
+                      date: (printPreviewData.activity?.date && !isNaN(new Date(printPreviewData.activity.date).getTime())) ? new Date(printPreviewData.activity.date).toLocaleDateString() : new Date().toLocaleDateString(),
+                      projectAddress: `${printPreviewData.activity?.siteOrWell || printPreviewData.activity?.area || printPreviewData.task?.location || ""} ${printPreviewData.activity?.blockLot ? "- " + printPreviewData.activity.blockLot : ""}`,
+                      meterBrand: printPreviewData.activity?.details?.meterBrand || "",
+                      meterSerialNumber: printPreviewData.activity?.details?.meterSerialNumber || "",
+                      meterSize: printPreviewData.activity?.details?.meterSize || "",
+                      volumeOfWater: Number(printPreviewData.activity?.details?.volumeOfWater || 30),
+                      reading1_init: Number(printPreviewData.activity?.details?.currentReading || 0),
+                      reading1_final: Number(printPreviewData.activity?.details?.reading1 || 0),
+                      reading2_init: Number(printPreviewData.activity?.details?.reading1 || 0),
+                      reading2_final: Number(printPreviewData.activity?.details?.reading2 || 0),
+                      reading3_init: Number(printPreviewData.activity?.details?.reading2 || 0),
+                      reading3_final: Number(printPreviewData.activity?.details?.reading3 || 0),
+                      error1: (((Number(printPreviewData.activity?.details?.reading1 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.01) - 1) * 100,
+                      error2: (((Number(printPreviewData.activity?.details?.reading2 || 0) - Number(printPreviewData.activity?.details?.reading1 || 0)) / 0.01) - 1) * 100,
+                      error3: (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.reading2 || 0)) / 0.01) - 1) * 100,
+                      avgError: (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100,
+                      testingResults:
+                        (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
+                          ? "Fast Moving"
+                          : (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
+                            ? "Slow Moving"
+                            : "Passed",
+                      recommendation:
+                        Math.abs((((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
+                          ? "Replace"
+                          : "Retain",
+                      testedBy: (printPreviewData.activity?.staff || []).join(", ") || printPreviewData.task?.assignedTo || "",
+                      witnessedBy: printPreviewData.activity?.details?.witnessedBy || "",
+                      witnessSignatureImg: printPreviewData.activity?.details?.witnessSignature || undefined,
+                      checkedBy: "HERNAN TALAVERA",
+                      finalDecision: "",
+                    }}
+                  />
+               ) : (
+                  <PrintableTaskHistory data={printPreviewData} />
+               )}
+            </div>
+            
+          </div>
         </div>
       )}
+
     </div>
   );
 }

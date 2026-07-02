@@ -46,7 +46,17 @@ export function ManpowerCalendarView({ currentUid, setActiveTab, currentUserRole
 
   const [palette, setPalette] = useState<Record<string, any>>({});
   
-  const isAdmin = !currentUserRole || ['admin', 'head'].some(role => currentUserRole.toLowerCase().includes(role));
+  // Fail-closed: only grant admin controls once a role is actually known and
+  // matches. Previously this defaulted to `true` whenever currentUserRole was
+  // null/empty (e.g. while the profile is still loading, or for any account
+  // with no role field set), silently giving every such user full manpower
+  // scheduling control. It also didn't recognize "operations_manager", which
+  // IS treated as admin everywhere else in the app (see useAdminRole.ts,
+  // ActivityView.tsx, StaffView.tsx) - that mismatch is fixed here too.
+  const isAdmin = !!currentUserRole && (
+    ['admin', 'operations_manager'].includes(currentUserRole.toLowerCase()) ||
+    currentUserRole.toLowerCase().includes('head')
+  );
   const [isPaletteModalOpen, setIsPaletteModalOpen] = useState(false);
   const [newPaletteItem, setNewPaletteItem] = useState({
     title: "", location: "", abbr: "", color: "bg-blue-600 text-white", start: "08:00", end: "16:00"

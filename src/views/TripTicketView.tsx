@@ -1,3 +1,5 @@
+import * as htmlToImage from 'html-to-image';
+import jsPDF from 'jspdf';
 import React, { useState, useEffect, useRef } from 'react';
 import { Car, Plus, Search, Calendar, ChevronDown, Check, X, MapPin, Map, RefreshCw, Trash2, Edit3 } from 'lucide-react';
 import { db } from '../lib/firebase';
@@ -314,7 +316,15 @@ export function TripTicketView({ isOnline = true, currentUid, currentUser, setAc
           </h2>
           <div className="flex items-center gap-2">
             {editingId && isAdmin && (
-               <button onClick={() => window.print()} className="btn-secondary px-3 py-1.5 text-sm hide-on-print">
+               <button onClick={async () => {
+                 try {
+                   const printElem = document.querySelector(".printable-area") as HTMLElement;
+                   if (!printElem) return;
+                                                         window.print();
+                 } catch(e) {
+                   console.error(e);
+                 }
+               }} className="btn-secondary px-3 py-1.5 text-sm hide-on-print">
                  Print
                </button>
             )}

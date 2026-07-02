@@ -1,3 +1,5 @@
+import * as htmlToImage from 'html-to-image';
+import jsPDF from 'jspdf';
 // force reload 2
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import SignatureCanvas from "react-signature-canvas";
@@ -302,6 +304,26 @@ export function ActivityView({
   const [accountNumber, setAccountNumber] = useState("");
   const [accountNumberError, setAccountNumberError] = useState("");
   const [contactNumberError, setContactNumberError] = useState("");
+  const [existingCustomerData, setExistingCustomerData] = useState<any>(null);
+  const [conflictModalData, setConflictModalData] = useState<{
+    existing: any;
+    new: any;
+    targetStatus: string;
+    capturedGps: any;
+  } | null>(null);
+
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3;
+    const phi1 = lat1 * Math.PI/180;
+    const phi2 = lat2 * Math.PI/180;
+    const dPhi = (lat2-lat1) * Math.PI/180;
+    const dLambda = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(dPhi/2) * Math.sin(dPhi/2) +
+              Math.cos(phi1) * Math.cos(phi2) *
+              Math.sin(dLambda/2) * Math.sin(dLambda/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState("");
 
@@ -488,6 +510,29 @@ export function ActivityView({
   };
 
   const lastParsedAccount = useRef("");
+
+  useEffect(() => {
+    if (accountNumber && accountNumber.length >= 6 && currentUid) {
+      const timer = setTimeout(async () => {
+        try {
+          const docRef = doc(db, `users/${currentUid}/customers`, accountNumber);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            setExistingCustomerData(data);
+            if (data.contactNumber && !contactNumber) setContactNumber(data.contactNumber);
+            if (data.accountName && !testAccountName) setTestAccountName(data.accountName);
+            if (data.gpsPosition && (!gpsLocation || gpsLocation === "Acquiring location...")) setGpsLocation(`${data.gpsPosition.latitude.toFixed(6)}, ${data.gpsPosition.longitude.toFixed(6)}`);
+          } else {
+            setExistingCustomerData(null);
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [accountNumber, currentUid]);
 
   useEffect(() => {
     if (accountNumber && accountNumber.length === 12 && accountNumber !== lastParsedAccount.current) {
@@ -776,17 +821,54 @@ export function ActivityView({
             lat: position.coords.latitude,
             lng: position.coords.longitude,
           };
-          finalizeSubmit(capturedGps, targetStatus);
+          checkConflictsBeforeSubmit(capturedGps, targetStatus);
         },
         (error) => {
           console.warn("Geolocation failed:", error.message);
-          finalizeSubmit(null, targetStatus);
+          checkConflictsBeforeSubmit(null, targetStatus);
         },
         { timeout: 5000 },
       );
     } else {
-      finalizeSubmit(null, targetStatus);
+      checkConflictsBeforeSubmit(null, targetStatus);
     }
+  };
+
+  const checkConflictsBeforeSubmit = (capturedGps: any, targetStatus: "completed" | "in_progress") => {
+    if (existingCustomerData && accountNumber) {
+      let hasConflict = false;
+      let finalGps = capturedGps;
+      if (!finalGps && typeof gpsLocation === 'string' && gpsLocation.includes(',')) {
+         const parts = gpsLocation.split(',');
+         const lat = parseFloat(parts[0]);
+         const lng = parseFloat(parts[1]);
+         if (!isNaN(lat) && !isNaN(lng)) finalGps = { lat, lng };
+      }
+      
+      if (contactNumber && existingCustomerData.contactNumber && contactNumber !== existingCustomerData.contactNumber) {
+        hasConflict = true;
+      }
+      
+      if (finalGps && existingCustomerData.gpsPosition) {
+         const dist = getDistance(finalGps.lat, finalGps.lng, existingCustomerData.gpsPosition.latitude, existingCustomerData.gpsPosition.longitude);
+         if (dist > 50) { // 50 meters variance
+            hasConflict = true;
+         }
+      }
+      
+      if (hasConflict) {
+        setConflictModalData({
+          existing: existingCustomerData,
+          new: { contactNumber, gpsPosition: finalGps ? { latitude: finalGps.lat, longitude: finalGps.lng } : null },
+          targetStatus,
+          capturedGps
+        });
+        setIsSubmitting(false);
+        setIsSavingDraft(false);
+        return;
+      }
+    }
+    finalizeSubmit(capturedGps, targetStatus);
   };
 
   const finalizeSubmit = async (
@@ -843,6 +925,7 @@ export function ActivityView({
       if (selectedTaskId) {
         updateDoc(doc(db, `users/${currentUid}/tasks`, selectedTaskId), {
           status: "completed",
+          completedAt: new Date().toISOString(),
           updatedAt: serverTimestamp(),
         }).catch(console.warn);
         linkedMsg += `\n✓ Marked associated task as completed.`;
@@ -875,6 +958,7 @@ export function ActivityView({
               if (matches) {
                 updateDoc(taskDoc.ref, {
                   status: "completed",
+                  completedAt: new Date().toISOString(),
                   description:
                     taskData.description +
                     `\n[Resolved by activity]`,
@@ -1060,8 +1144,17 @@ export function ActivityView({
 
       if (selectedActivity === "meter_test" && testAccountName) {
         // Trigger print after save
-        setTimeout(() => {
-          window.print();
+        setTimeout(async () => {
+          try {
+            showToast("Generating printable form...", "info");
+            const printElem = document.getElementById("print-area");
+            if (!printElem) return;
+                                    window.print();
+            showToast("Form downloaded successfully.", "success");
+          } catch(e) {
+            console.error("PDF generation failed:", e);
+            showToast("Failed to generate PDF: " + (e instanceof Error ? e.message : String(e)), "error");
+          }
         }, 500);
       }
 
@@ -3505,7 +3598,19 @@ export function ActivityView({
                                     type="button"
                                     onClick={() => {
                                       setReprintData(h);
-                                      setTimeout(() => window.print(), 500);
+                                      setTimeout(async () => {
+                                        try {
+                                          showToast("Generating printable form...", "info");
+                                          const printElem = document.getElementById("print-area");
+                                          if (!printElem) return;
+                                                                                                                              window.print();
+                                          showToast("Form downloaded successfully.", "success");
+                                          setReprintData(null);
+                                        } catch (e) {
+                                          console.error(e);
+                                          setReprintData(null);
+                                        }
+                                      }, 500);
                                     }}
                                     className="text-primary font-semibold hover:underline bg-primary/10 px-3 py-1 rounded text-xs"
                                   >
@@ -3994,20 +4099,102 @@ export function ActivityView({
       </form>
       )}
 
+      {conflictModalData && (
+        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 sm:p-6 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-surface w-full max-w-[512px] rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface">
+              <h3 className="font-headline-sm font-semibold text-lg text-on-surface flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-warning" />
+                Data Conflict Detected
+              </h3>
+            </div>
+            <div className="p-6 overflow-y-auto flex flex-col gap-4">
+              <p className="text-body-md text-on-surface-variant">
+                The data you entered differs significantly from the existing Customer Database record. Which data is correct?
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="border border-outline-variant rounded-xl p-4 bg-surface-variant/30">
+                  <h4 className="font-semibold text-sm mb-3">Existing Record</h4>
+                  <div className="flex flex-col gap-2 text-sm">
+                    <div>
+                      <span className="text-on-surface-variant text-xs">Contact Number</span>
+                      <p>{conflictModalData.existing.contactNumber || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant text-xs">GPS</span>
+                      <p>{conflictModalData.existing.gpsPosition ? `${conflictModalData.existing.gpsPosition.latitude.toFixed(5)}, ${conflictModalData.existing.gpsPosition.longitude.toFixed(5)}` : "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="border border-primary/30 rounded-xl p-4 bg-primary/5">
+                  <h4 className="font-semibold text-sm mb-3 text-primary">Newly Captured</h4>
+                  <div className="flex flex-col gap-2 text-sm">
+                    <div>
+                      <span className="text-on-surface-variant text-xs">Contact Number</span>
+                      <p>{conflictModalData.new.contactNumber || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant text-xs">GPS</span>
+                      <p>{conflictModalData.new.gpsPosition ? `${conflictModalData.new.gpsPosition.latitude.toFixed(5)}, ${conflictModalData.new.gpsPosition.longitude.toFixed(5)}` : "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 border-t border-outline-variant bg-surface flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setConflictModalData(null);
+                }}
+                className="btn-secondary px-4"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // Keep existing
+                  setContactNumber(conflictModalData.existing.contactNumber || contactNumber);
+                  if (conflictModalData.existing.gpsPosition) {
+                     setGpsLocation(`${conflictModalData.existing.gpsPosition.latitude.toFixed(6)}, ${conflictModalData.existing.gpsPosition.longitude.toFixed(6)}`);
+                  }
+                  finalizeSubmit(conflictModalData.capturedGps, conflictModalData.targetStatus as "completed" | "in_progress");
+                  setConflictModalData(null);
+                }}
+                className="btn-outline px-4"
+              >
+                Keep Existing
+              </button>
+              <button
+                onClick={() => {
+                  // Use new
+                  finalizeSubmit(conflictModalData.capturedGps, conflictModalData.targetStatus as "completed" | "in_progress");
+                  setConflictModalData(null);
+                }}
+                className="btn-primary px-4"
+              >
+                Update with New
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hidden PDF Printable Test Area */}
       {(isMeterTest && testAccountName) || reprintData ? (
-        <div className="hidden print:block">
+        <div id="print-area" className="fixed top-0 left-[-2000px] w-[800px] bg-white z-[-50] text-black print:static print:w-auto print:left-auto print:z-auto">
           <PrintableMeterTest
             data={reprintData ? {
-              account: reprintData.details?.testAccountName || reprintData.details?.accountNumber || "",
+              jobOrderNumber: reprintData.joNumber || reprintData.id || "",
+              accountName: reprintData.details?.testAccountName || "",
+              accountNumber: reprintData.details?.accountNumber || "",
               date: new Date(reprintData.date).toLocaleDateString(),
               projectAddress: `${reprintData.siteOrWell || reprintData.area} ${reprintData.blockLot ? "- " + reprintData.blockLot : ""}`,
-              natureOfTest: reprintData.details?.testNature || "",
-              paymentDetails: "",
               meterBrand: reprintData.details?.meterBrand || "",
               meterSerialNumber: reprintData.details?.meterSerialNumber || "",
+              meterSize: reprintData.details?.meterSize || "",
               volumeOfWater: 30, // 3 x 10
-              natureOfMeter: reprintData.details?.meterNature || "",
               reading1_init: Number(reprintData.details?.currentReading || 0),
               reading1_final: Number(reprintData.details?.reading1 || 0),
               reading2_init: Number(reprintData.details?.reading1 || 0),
@@ -4034,17 +4221,17 @@ export function ActivityView({
               checkedBy: "HERNAN TALAVERA",
               finalDecision: "",
             } : {
-              account: testAccountName,
+              jobOrderNumber: jobOrderNumber || "",
+              accountName: testAccountName,
+              accountNumber: accountNumber,
               date: currentDate
                 ? new Date(currentDate).toLocaleDateString()
                 : new Date().toLocaleDateString(),
               projectAddress: `${selectedSiteOrWell} ${blockLot ? "- " + blockLot : ""}`,
-              natureOfTest: testNature,
-              paymentDetails: "",
               meterBrand: meterBrand,
               meterSerialNumber: meterSerialNumber,
+              meterSize: "",
               volumeOfWater: 30, // 3 x 10
-              natureOfMeter: meterNature,
               reading1_init: Number(currentReading),
               reading1_final: Number(reading1),
               reading2_init: Number(reading1),

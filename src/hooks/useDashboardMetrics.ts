@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot, getDocs, limit, orderBy, where, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { isLowStock } from '../utils/inventory';
 
 export interface DashboardMetrics {
   tasks: any[];
@@ -60,15 +61,18 @@ export const useDashboardMetrics = (currentUid: string | null): DashboardMetrics
       setIncidents(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     }, () => {});
     
-    // Use the CalendarEvents collection for shifts
-    const today = new Date().toISOString();
+    // Use the CalendarEvents collection for shifts.
+    // NOTE: "now" is recomputed inside the snapshot callback (not captured
+    // once outside it) so that "next shift" stays accurate for long-lived
+    // sessions instead of using a cutoff frozen at mount time.
     const unsubShifts = onSnapshot(
       query(collection(db, `users/${currentUid}/CalendarEvents`), where("type", "==", "SHIFT"), limit(50)),
       (snapshot) => {
+        const now = new Date().toISOString();
         // Find the next upcoming shift (simplest logic: sort manually by start time)
         const shifts = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
         const upcoming = shifts
-          .filter(s => s.startTime && s.startTime >= today)
+          .filter(s => s.startTime && s.startTime >= now)
           .sort((a, b) => a.startTime.localeCompare(b.startTime));
         
         setUpcomingShifts(upcoming);
@@ -83,7 +87,7 @@ export const useDashboardMetrics = (currentUid: string | null): DashboardMetrics
     const unsubInv = onSnapshot(query(collection(db, `users/${currentUid}/inventory`), limit(1000)), (snapshot) => {
       let lowCount = 0;
       snapshot.forEach(doc => {
-        if (doc.data().currentStock <= doc.data().minThreshold) lowCount++;
+        if (isLowStock(doc.data() as any)) lowCount++;
       });
       setLowStockCount(lowCount);
     }, () => {});
