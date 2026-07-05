@@ -112,6 +112,7 @@ interface ActivityViewProps {
   setActiveTab?: (tab: any) => void;
   initialCategory?: "ad-hoc" | "task" | "incident";
   currentUserRole?: string | null;
+  globalSearchQuery?: string;
 }
 
 export function ActivityView({
@@ -121,6 +122,7 @@ export function ActivityView({
   setActiveTab,
   initialCategory = "ad-hoc",
   currentUserRole,
+  globalSearchQuery = "",
 }: ActivityViewProps) {
   const { isLowDataMode } = useNetworkInfo();
   const { showToast } = useToast();
@@ -1507,7 +1509,8 @@ export function ActivityView({
 
       {workCategory === "task" ? (
         <TasksView 
-          setActiveTab={setActiveTab} 
+          setActiveTab={setActiveTab}
+          globalSearchQuery={globalSearchQuery}
           onSwitchToAdhoc={(activityType?: string, taskContext?: any) => {
             setWorkCategory("ad-hoc");
             if (activityType) {
@@ -4257,19 +4260,19 @@ export function ActivityView({
               meterBrand: reprintData.details?.meterBrand || "",
               meterSerialNumber: reprintData.details?.meterSerialNumber || "",
               meterSize: reprintData.details?.meterSize || "",
-              volumeOfWater: 30, // 3 x 10
+              volumeOfWater: Number(reprintData.details?.volumeOfWater || 30),
               reading1_init: reprintData.details?.currentReading !== undefined && reprintData.details?.currentReading !== "" ? Number(reprintData.details?.currentReading) : undefined,
               reading1_final: reprintData.details?.reading1 !== undefined && reprintData.details?.reading1 !== "" ? Number(reprintData.details?.reading1) : undefined,
               reading2_init: reprintData.details?.reading1 !== undefined && reprintData.details?.reading1 !== "" ? Number(reprintData.details?.reading1) : undefined,
               reading2_final: reprintData.details?.reading2 !== undefined && reprintData.details?.reading2 !== "" ? Number(reprintData.details?.reading2) : undefined,
               reading3_init: reprintData.details?.reading2 !== undefined && reprintData.details?.reading2 !== "" ? Number(reprintData.details?.reading2) : undefined,
               reading3_final: reprintData.details?.reading3 !== undefined && reprintData.details?.reading3 !== "" ? Number(reprintData.details?.reading3) : undefined,
-              error1: undefined,
-              error2: undefined,
-              error3: undefined,
-              avgError: undefined,
-              testingResults: "",
-              recommendation: "",
+              error1: reprintData.details?.error1,
+              error2: reprintData.details?.error2,
+              error3: reprintData.details?.error3,
+              avgError: reprintData.details?.avgError,
+              testingResults: reprintData.details?.testingResults || "",
+              recommendation: reprintData.details?.recommendation || "",
               testedBy: (reprintData.staff || []).join(", "),
               witnessedBy: reprintData.details?.witnessedBy || "",
               witnessSignatureImg: reprintData.details?.witnessSignature || undefined,

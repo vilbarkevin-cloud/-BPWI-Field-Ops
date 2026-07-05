@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, where, getDocs, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { Search, Loader2, AlertCircle, Printer, Edit2, X } from "lucide-react";
+import { Search, Loader2, AlertCircle, Printer, Edit2, X, ExternalLink } from "lucide-react";
+import { useNavigation } from "../contexts/NavigationContext";
 import { PrintableMeterTest } from "../components/PrintableMeterTest";
 
 interface MeterQALogsViewProps {
@@ -9,13 +10,20 @@ interface MeterQALogsViewProps {
 }
 
 export function MeterQALogsView({ currentUid }: MeterQALogsViewProps) {
+  const { activeJobId, setActiveJobId, dispatchAction } = useNavigation();
   const [logs, setLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   
   // Filters
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(activeJobId || "");
   const [statusFilter, setStatusFilter] = useState<"All" | "Passed" | "Failed">("All");
+
+  useEffect(() => {
+    if (activeJobId) {
+      setSearchQuery(activeJobId);
+    }
+  }, [activeJobId]);
 
   // Print Preview
   const [printPreviewData, setPrintPreviewData] = useState<any | null>(null);
@@ -30,6 +38,7 @@ export function MeterQALogsView({ currentUid }: MeterQALogsViewProps) {
     if (!currentUid) return;
 
     const fetchLogs = async () => {
+      if (currentUid) await (await import("../utils/migrateJob")).migrateJobToActivity(currentUid, "JOB0012143");
       setIsLoading(true);
       setError("");
       try {
@@ -361,6 +370,16 @@ export function MeterQALogsView({ currentUid }: MeterQALogsViewProps) {
                               title="Print Preview"
                             >
                               <Printer className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                dispatchAction('VIEW_TASK', { jobId: log.id });
+                              }}
+                              className="p-1.5 text-on-surface-variant hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                              title="Go to Task"
+                            >
+                              <ExternalLink className="w-4 h-4" />
                             </button>
                             <button
                               onClick={(e) => {

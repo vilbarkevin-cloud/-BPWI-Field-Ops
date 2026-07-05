@@ -1,5 +1,6 @@
 import * as htmlToImage from 'html-to-image';
 import jsPDF from 'jspdf';
+import { useNavigation } from "../contexts/NavigationContext";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   ClipboardList,
@@ -148,6 +149,7 @@ export function DashboardView({
   currentUser,
   dashboardMode = "field_ops",
 }: DashboardViewProps) {
+  const { dispatchAction } = useNavigation();
   const [selectedActivity, setSelectedActivity] = useState("all");
   const [selectedArea, setSelectedArea] = useState("All Areas");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -285,6 +287,11 @@ export function DashboardView({
       return ts;
     };
 
+    const stripRole = (nameStr: string) => {
+      if (!nameStr || nameStr === "System") return nameStr;
+      return nameStr.split(',').map(part => part.split('-')[0].trim()).join(', ');
+    };
+
     // Process Tasks
     filteredTasks.forEach(t => {
       logs.push({
@@ -294,7 +301,7 @@ export function DashboardView({
         description: `Status: ${t.status}`,
         timestamp: getValidDate(t.updatedAt || t.createdAt || new Date().toISOString()),
         icon: 'task',
-        user: t.updatedBy || t.assignedTo || "System"
+        user: stripRole(t.updatedBy || t.assignedTo || "System"), rawId: t.id, rawType: "task"
       });
     });
 
@@ -308,7 +315,7 @@ export function DashboardView({
           description: i.description || i.summary || "New incident",
           timestamp: getValidDate(i.timestamp || i.createdAt || new Date().toISOString()),
           icon: 'incident',
-          user: i.reportedBy || i.updatedBy || "System"
+          user: stripRole(i.reportedBy || i.updatedBy || "System"), rawId: i.id, rawType: "incident"
         });
       }
     });
@@ -322,7 +329,7 @@ export function DashboardView({
         description: a.siteOrWell || a.area || "General Activity",
         timestamp: getValidDate(a.date || a.createdAt || new Date().toISOString()),
         icon: a.type === 'chlorination' ? 'chlorination' : 'activity',
-        user: a.loggedBy || a.user || "System"
+        user: stripRole(a.loggedBy || a.user || "System"), rawId: a.id, rawType: a.type === "meter_test" ? "meter_test" : "activity"
       });
     });
 
@@ -939,7 +946,21 @@ export function DashboardView({
             <div className="divide-y divide-outline-variant/30">
               {recentActivityLogs.length > 0 ? (
                 recentActivityLogs.map(log => (
-                  <div key={log.id} className="p-4 flex items-start gap-4 hover:bg-surface-container-low transition-colors">
+                  <div 
+                    key={log.id} 
+                    className="p-4 flex items-start gap-4 hover:bg-surface-container-low transition-colors cursor-pointer"
+                    onClick={() => {
+                      if (log.rawType === 'meter_test') {
+                        dispatchAction('VIEW_METER_QA', { jobId: log.rawId });
+                      } else if (log.type === 'task') {
+                        dispatchAction('VIEW_TASK', { jobId: log.rawId });
+                      } else if (log.type === 'incident') {
+                        dispatchAction('CREATE_INCIDENT', { jobId: log.rawId });
+                      } else if (log.type === 'activity' || log.type === 'chlorination') {
+                        dispatchAction('EDIT_ACTIVITY', { jobId: log.rawId });
+                      }
+                    }}
+                  >
                     <div className={`p-2 rounded-lg shrink-0 ${
                       log.type === 'task' ? 'bg-primary/10 text-primary' :
                       log.type === 'incident' ? 'bg-error/10 text-error' :

@@ -69,9 +69,13 @@ export function MasterCalendarView({ currentUid, setActiveTab }: MasterCalendarV
 
   
   useEffect(() => {
+    (window as any).pmsViewMounted = true;
     const handleOpenNewPms = () => setShowNewScheduleModal(true);
     window.addEventListener("open-new-pms", handleOpenNewPms);
-    return () => window.removeEventListener("open-new-pms", handleOpenNewPms);
+    return () => {
+      (window as any).pmsViewMounted = false;
+      window.removeEventListener("open-new-pms", handleOpenNewPms);
+    };
   }, []);
 
   const [showNewScheduleModal, setShowNewScheduleModal] = useState(false);

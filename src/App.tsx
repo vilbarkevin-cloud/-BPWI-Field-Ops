@@ -1,6 +1,9 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
+import { clear } from "idb-keyval";
 import { cleanUpOldLocalData } from "./utils/storageCleanup";
 import { removeMockDataFromFirestore } from "./utils/removeMockData";
+import { useNavigation } from "./contexts/NavigationContext";
+import { Breadcrumbs } from "./components/Breadcrumbs";
 import { TopBar } from "./components/TopBar";
 import { Sidebar, Tab } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
@@ -88,7 +91,7 @@ function renderHumanReadableDiff(localData: any, remoteData: any) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab | "live-map">("dashboard");
+  const { currentView: activeTab, setCurrentView: setActiveTab } = useNavigation();
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -287,6 +290,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      await clear();
       await signOut(auth);
     } catch (err) {
       console.error("Logout failed:", err);
@@ -409,6 +413,10 @@ export default function App() {
             onSearchChange={setGlobalSearchQuery}
           />
         </div>
+        
+        <div className="hide-on-print">
+          <Breadcrumbs />
+        </div>
 
         {!isOnline && (
           <div className="bg-warning text-on-surface p-2 text-center text-sm font-semibold flex items-center justify-center gap-2 z-50 shadow-sm border-b border-warning hide-on-print">
@@ -510,38 +518,22 @@ export default function App() {
                 dashboardMode={dashboardMode}
               />
             )}
-            {activeTab === "activity" && (
+            {(activeTab === "activity" || activeTab === "tasks" || activeTab === "incidents") && (
               <ActivityView
                 setActiveTab={setActiveTab}
                 isOnline={isOnline}
                 currentUser={currentUser}
                 currentUid={currentUid}
-                initialCategory="ad-hoc"
+                initialCategory={
+                  activeTab === "tasks" ? "task" : 
+                  activeTab === "incidents" ? "incident" : "ad-hoc"
+                }
                 currentUserRole={currentUserRole}
-              />
-            )}
-            {activeTab === "tasks" && (
-              <ActivityView
-                setActiveTab={setActiveTab}
-                isOnline={isOnline}
-                currentUser={currentUser}
-                currentUid={currentUid}
-                initialCategory="task"
-                currentUserRole={currentUserRole}
+                globalSearchQuery={globalSearchQuery}
               />
             )}
             {activeTab === "pms" && <MasterCalendarView setActiveTab={setActiveTab} currentUid={currentUid} />}
             {activeTab === "manpower" && <ManpowerCalendarView setActiveTab={setActiveTab} currentUid={currentUid} currentUserRole={currentUserRole} />}
-            {activeTab === "incidents" && (
-              <ActivityView
-                setActiveTab={setActiveTab}
-                isOnline={isOnline}
-                currentUser={currentUser}
-                currentUid={currentUid}
-                initialCategory="incident"
-                currentUserRole={currentUserRole}
-              />
-            )}
             {activeTab === "attendance" && (
               <AttendanceView setActiveTab={setActiveTab} currentUser={currentUser} currentUid={currentUid} />
             )}

@@ -51,14 +51,28 @@ export function BottomNav({ activeTab, setActiveTab }: BottomNavProps) {
     setIsMenuOpen(false);
     if (action === 'task') {
       setActiveTab("tasks");
-      setTimeout(() => window.dispatchEvent(new Event('open-new-task')), 100);
+      const tryDispatchTask = () => {
+        if ((window as any).tasksViewMounted) {
+          window.dispatchEvent(new Event('open-new-task'));
+        } else {
+          setTimeout(tryDispatchTask, 50);
+        }
+      };
+      tryDispatchTask();
     } else if (action === 'incident') {
       setActiveTab("incidents");
     } else if (action === 'activity') {
       setActiveTab("activity");
     } else if (action === 'pms') {
       setActiveTab("pms");
-      setTimeout(() => window.dispatchEvent(new Event('open-new-pms')), 100);
+      const tryDispatchPms = () => {
+        if ((window as any).pmsViewMounted) {
+          window.dispatchEvent(new Event('open-new-pms'));
+        } else {
+          setTimeout(tryDispatchPms, 50);
+        }
+      };
+      tryDispatchPms();
     }
   };
 

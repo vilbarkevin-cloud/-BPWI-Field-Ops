@@ -35,9 +35,14 @@ export function useSyncQueue(tenantUid?: string | null) {
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const backoffDelayRef = useRef(2000);
 
+  const namespaceKey = (key: string) => {
+    const u = tenantUid || auth.currentUser?.uid;
+    return u ? `${key}_${u}` : key;
+  };
+
   const getStoreData = async (key: string) => {
     try {
-      const data = await get(key);
+      const data = await get(namespaceKey(key));
       return data || [];
     } catch (e) {
       console.error(e);
@@ -48,7 +53,7 @@ export function useSyncQueue(tenantUid?: string | null) {
   const calculateQueue = useCallback(async () => {
     try {
       const parsedActivities = await getStoreData("watsanActivities");
-      const parsedTasks = await getStoreData("watsanTasks");
+      const parsedTasks = await getStoreData(`watsanTasks_${tenantUid || auth.currentUser?.uid}`);
       const parsedIncidents = await getStoreData("watsanIncidents");
       
       let count = 0;
@@ -107,7 +112,7 @@ export function useSyncQueue(tenantUid?: string | null) {
       try {
         let storageKey = "";
         if (type === "Activity") storageKey = "watsanActivities";
-        else if (type === "Task") storageKey = "watsanTasks";
+        else if (type === "Task") storageKey = `watsanTasks_${tenantUid || auth.currentUser?.uid}`;
         else if (type === "Incident") storageKey = "watsanIncidents";
 
         if (!storageKey) return;
@@ -165,7 +170,7 @@ export function useSyncQueue(tenantUid?: string | null) {
       // Update local storage
       let storageKey = "";
       if (conflict.type === "Activity") storageKey = "watsanActivities";
-      else if (conflict.type === "Task") storageKey = "watsanTasks";
+      else if (conflict.type === "Task") storageKey = `watsanTasks_${tenantUid || auth.currentUser?.uid}`;
       else if (conflict.type === "Incident") storageKey = "watsanIncidents";
 
       if (storageKey) {
@@ -183,7 +188,7 @@ export function useSyncQueue(tenantUid?: string | null) {
   }, [syncConflicts, calculateQueue, tenantUid]);
 
   const clearCompleted = useCallback(async () => {
-    for (const key of ["watsanActivities", "watsanTasks", "watsanIncidents"]) {
+    for (const key of ["watsanActivities", `watsanTasks_${tenantUid || auth.currentUser?.uid}`, "watsanIncidents"]) {
        await update(key, (val: any) => {
           if (!val) return val;
           return val.map((item: any) => {
@@ -218,7 +223,7 @@ export function useSyncQueue(tenantUid?: string | null) {
     let processed = 0;
 
     // Process Tasks
-    const parsedTasks = await getStoreData("watsanTasks");
+    const parsedTasks = await getStoreData(`watsanTasks_${tenantUid || auth.currentUser?.uid}`);
     if (parsedTasks.length > 0) {
       const toSync = parsedTasks.filter(
         (t: any) => !t.isSynced && t.autoRetry !== false,
@@ -282,7 +287,7 @@ export function useSyncQueue(tenantUid?: string | null) {
       });
 
       if (toSync.length > 0) {
-        await set("watsanTasks", synced);
+        await set(`watsanTasks_${tenantUid || auth.currentUser?.uid}`, synced);
         updated = true;
       }
     }
@@ -329,7 +334,7 @@ export function useSyncQueue(tenantUid?: string | null) {
       });
 
       if (toSync.length > 0) {
-        await set("watsanActivities", synced);
+        await set(namespaceKey("watsanActivities"), synced);
         updated = true;
       }
     }
@@ -376,7 +381,7 @@ export function useSyncQueue(tenantUid?: string | null) {
       });
 
       if (toSync.length > 0) {
-        await set("watsanIncidents", synced);
+        await set(namespaceKey("watsanIncidents"), synced);
         updated = true;
       }
     }
@@ -412,7 +417,7 @@ export function useSyncQueue(tenantUid?: string | null) {
      if (!currentUid || !navigator.onLine) return;
      
      try {
-        const parsedTasks = await getStoreData("watsanTasks");
+        const parsedTasks = await getStoreData(`watsanTasks_${tenantUid || auth.currentUser?.uid}`);
         if (parsedTasks.length > 0) {
            // We only want to clean up tasks that are marked synced but no longer exist remotely,
            // or we can just drop any task that we try to sync but it throws a specific error.
@@ -421,7 +426,7 @@ export function useSyncQueue(tenantUid?: string | null) {
            const remoteIds = new Set(snapshot.docs.map(d => d.id));
            const validTasks = parsedTasks.filter((t: any) => !t.isSynced || remoteIds.has(t.id));
            if (validTasks.length !== parsedTasks.length) {
-              await set("watsanTasks", validTasks);
+              await set(`watsanTasks_${tenantUid || auth.currentUser?.uid}`, validTasks);
            }
         }
      } catch(e) {
@@ -483,7 +488,7 @@ export function useSyncQueue(tenantUid?: string | null) {
 
   // Expose a helper to add to queue from any component
   const enqueueAction = useCallback(async (store: string, item: any) => {
-     await update(store, (val: any) => {
+     await update(namespaceKey(store), (val: any) => {
         const items = val || [];
         // replace if exists
         const idx = items.findIndex((i: any) => i.id === item.id);
@@ -495,7 +500,7 @@ export function useSyncQueue(tenantUid?: string | null) {
         return items;
      });
      calculateQueue();
-  }, [calculateQueue]);
+  }, [calculateQueue, tenantUid]);
 
   return {
     queueCount,

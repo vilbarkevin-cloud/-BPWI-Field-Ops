@@ -4,11 +4,11 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if false;
     }
-
-    // Primitive definition
+    
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
     function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return request.auth.uid == userId; }
     function isValidId(id) { 
         return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
@@ -18,11 +18,14 @@ service cloud.firestore {
              ? get(/databases/$(database)/documents/users/$(uid)/profile/info).data.role
              : '';
     }
-
     function isAdmin(uid) {
-      return getRole(uid) == 'admin' ||
-             getRole(uid) == 'operations_manager' ||
+      return getRole(uid) == 'admin' || 
+             getRole(uid) == 'operations_manager' || 
              (getRole(uid) is string && getRole(uid).matches('.*[hH]ead.*'));
+    }
+    
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin(request.auth.uid);
     }
 
     // Validation Blueprint for Task
@@ -74,56 +77,57 @@ service cloud.firestore {
     }
 
     match /users/{userId}/workLogs/{logId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
     
     match /users/{userId}/tasks/{taskId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isOwnerOrAdmin(userId);
       
       allow create: if isSignedIn() 
+                    && isOwnerOrAdmin(userId)
                     && isValidId(taskId)
                     && isValidId(userId)
                     && isValidTask(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
-                    
+      
       allow update: if isSignedIn()
+                    && isOwnerOrAdmin(userId)
                     && isValidId(taskId)
                     && isValidId(userId)
                     && isValidTask(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time
                     && (
-                      // Action: Standard update
                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'priority', 'location', 'description', 'assignedTo', 'deadline', 'isSynced', 'status', 'updatedAt', 'photoUrl', 'consumedParts', 'linkedActivity', 'joNumber', 'accountNumber', 'accountName', 'completedAt', 'tatJustification', 'notes', 'linkedAssetId', 'updatedBy'])
                     );
-
-      allow delete: if isSignedIn();
+      allow delete: if isSignedIn() && isOwnerOrAdmin(userId);
     }
 
-    match /users/{userId}/profile/{docId} {
-       allow read: if isSignedIn();
-       allow write: if isSignedIn();
+    match /users/{userId}/profile/{docId} { 
+       allow read: if isSignedIn() && isOwnerOrAdmin(userId);
+       allow write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
 
     match /users/{userId}/inventory/{itemId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isOwnerOrAdmin(userId);
       
       allow create: if isSignedIn() 
+                    && isOwnerOrAdmin(userId)
                     && isValidId(itemId)
                     && isValidId(userId)
                     && isValidInventory(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
-                    
+      
       allow update: if isSignedIn()
+                    && isOwnerOrAdmin(userId)
                     && isValidId(itemId)
                     && isValidId(userId)
                     && isValidInventory(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time;
-
-      allow delete: if isSignedIn();
+      allow delete: if isSignedIn() && isOwnerOrAdmin(userId);
     }
 
     match /{path=**}/tripTickets/{ticketId} {
@@ -149,67 +153,76 @@ service cloud.firestore {
     }
 
     match /users/{userId}/tripTickets/{ticketId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
 
     match /users/{userId}/activities/{activityId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isOwnerOrAdmin(userId);
       
       allow create: if isSignedIn() 
+                    && isOwnerOrAdmin(userId)
                     && isValidId(activityId)
                     && isValidId(userId)
                     && isValidActivity(incoming())
                     && incoming().createdAt == request.time
                     && incoming().updatedAt == request.time;
-                    
+      
       allow update: if isSignedIn()
+                    && isOwnerOrAdmin(userId)
                     && isValidId(activityId)
                     && isValidId(userId)
                     && isValidActivity(incoming())
                     && incoming().createdAt == existing().createdAt
                     && incoming().updatedAt == request.time
                     && (
-                      // Action: Standard update
                       incoming().diff(existing()).affectedKeys().hasOnly(['type', 'area', 'siteOrWell', 'blockLot', 'staff', 'date', 'status', 'isSynced', 'details', 'updatedAt', 'title', 'data'])
                     );
-
-      allow delete: if isSignedIn();
+      allow delete: if isSignedIn() && isOwnerOrAdmin(userId);
     }
 
     match /users/{userId}/attendance/{attendanceId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/areas/{areaId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/staff/{staffId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/customers/{customerId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/activityTypes/{typeId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/incidents/{incidentId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() 
+      allow read: if isSignedIn() && isOwnerOrAdmin(userId);
+      allow create: if isSignedIn() && isOwnerOrAdmin(userId)
                     && isValidId(incidentId)
                     && isValidIncident(incoming());
-      allow update: if isSignedIn() && isValidIncident(incoming());
-      allow delete: if isSignedIn();
+      allow update: if isSignedIn() && isOwnerOrAdmin(userId) && isValidIncident(incoming());
+      allow delete: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/CalendarEvents/{eventId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/ManpowerPalette/{paletteId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/huddle_reports/{reportId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
+
     match /users/{userId}/handovers/{handoverId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && isOwnerOrAdmin(userId);
     }
   }
 }

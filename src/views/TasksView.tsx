@@ -50,9 +50,10 @@ import { ACTIVITY_TYPES } from "../lib/activityTypes";
 import { useAdminRole } from "../hooks/useAdminRole";
 import { haptics } from "../utils/haptics";
 
+import { useNavigation } from "../contexts/NavigationContext";
 import { useSyncQueue } from "../utils/useSyncQueue";
-import { PrintableMeterTest } from "../components/PrintableMeterTest";
 import { PrintableTaskHistory, PrintableTaskHistoryData } from "../components/PrintableTaskHistory";
+import { PrintableMeterTest } from "../components/PrintableMeterTest";
 import { compressImage } from "../utils/imageProcessor";
 import { get } from "idb-keyval";
 
@@ -98,14 +99,24 @@ interface TasksViewProps {
 }
 
 export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdhoc, globalSearchQuery = "" }: TasksViewProps) {
+  const { activeJobId, setActiveJobId } = useNavigation();
   const isAdmin = useAdminRole(currentUid);
 
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(activeJobId);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskLimit, setTaskLimit] = useState(50);
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
   const [staffList, setStaffList] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState(globalSearchQuery);
+  const [searchQuery, setSearchQuery] = useState(activeJobId || globalSearchQuery);
+
+  useEffect(() => {
+    if (activeJobId) {
+      setSearchQuery(activeJobId);
+      setOpenTaskId(activeJobId);
+    } else {
+      setSearchQuery(globalSearchQuery);
+    }
+  }, [activeJobId, globalSearchQuery]);
 
   const { syncData, isSyncing, enqueueAction } = useSyncQueue(currentUid);
   const [isPulling, setIsPulling] = useState(false);
@@ -351,8 +362,12 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
   };
 
   useEffect(() => {
+    (window as any).tasksViewMounted = true;
     window.addEventListener("open-new-task", handleOpenNewTask);
-    return () => window.removeEventListener("open-new-task", handleOpenNewTask);
+    return () => {
+      (window as any).tasksViewMounted = false;
+      window.removeEventListener("open-new-task", handleOpenNewTask);
+    };
   }, []);
 
   const [taskPhotos, setTaskPhotos] = useState<Record<string, string>>({});
@@ -475,7 +490,11 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
   }, []);
 
   const toggleDetail = (id: string) => {
-    setOpenTaskId(openTaskId === id ? null : id);
+    const nextId = openTaskId === id ? null : id;
+    setOpenTaskId(nextId);
+    if (activeJobId && !nextId) {
+      setActiveJobId(null);
+    }
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -1483,39 +1502,39 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
 
             {/* Modal Body / Printable Content */}
             <div className="p-6 overflow-auto bg-gray-100 print:bg-transparent print:overflow-visible print:p-0">
-               {(printPreviewData.activity?.type === 'meter_test' || printPreviewData.task?.linkedActivity === 'meter_test' || (printPreviewData.task?.title && printPreviewData.task.title.toLowerCase().includes('meter test'))) ? (
-                  <PrintableMeterTest
-                    data={{
-                      jobOrderNumber: printPreviewData.task?.joNumber || printPreviewData.task?.id || "",
-                      accountName: printPreviewData.activity?.details?.testAccountName || printPreviewData.task?.accountName || "",
-                      accountNumber: printPreviewData.activity?.details?.accountNumber || printPreviewData.task?.accountNumber || "",
-                      date: (printPreviewData.activity?.date && !isNaN(new Date(printPreviewData.activity.date).getTime())) ? new Date(printPreviewData.activity.date).toLocaleDateString() : new Date().toLocaleDateString(),
-                      projectAddress: `${printPreviewData.activity?.siteOrWell || printPreviewData.activity?.area || printPreviewData.task?.location || ""} ${printPreviewData.activity?.blockLot ? "- " + printPreviewData.activity.blockLot : ""}`,
-                      meterBrand: printPreviewData.activity?.details?.meterBrand || "",
-                      meterSerialNumber: printPreviewData.activity?.details?.meterSerialNumber || "",
-                      meterSize: printPreviewData.activity?.details?.meterSize || "",
-                      volumeOfWater: Number(printPreviewData.activity?.details?.volumeOfWater || 30),
-                      reading1_init: printPreviewData.activity?.details?.currentReading !== undefined && printPreviewData.activity?.details?.currentReading !== "" ? Number(printPreviewData.activity?.details?.currentReading) : undefined,
-                      reading1_final: printPreviewData.activity?.details?.reading1 !== undefined && printPreviewData.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity?.details?.reading1) : undefined,
-                      reading2_init: printPreviewData.activity?.details?.reading1 !== undefined && printPreviewData.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity?.details?.reading1) : undefined,
-                      reading2_final: printPreviewData.activity?.details?.reading2 !== undefined && printPreviewData.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity?.details?.reading2) : undefined,
-                      reading3_init: printPreviewData.activity?.details?.reading2 !== undefined && printPreviewData.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity?.details?.reading2) : undefined,
-                      reading3_final: printPreviewData.activity?.details?.reading3 !== undefined && printPreviewData.activity?.details?.reading3 !== "" ? Number(printPreviewData.activity?.details?.reading3) : undefined,
-                      error1: printPreviewData.activity?.details?.error1,
-                      error2: printPreviewData.activity?.details?.error2,
-                      error3: printPreviewData.activity?.details?.error3,
-                      avgError: printPreviewData.activity?.details?.avgError,
-                      testingResults: printPreviewData.activity?.details?.testingResults || "",
-                      recommendation: printPreviewData.activity?.details?.recommendation || "",
-                      testedBy: (printPreviewData.activity?.staff || []).join(", ") || printPreviewData.task?.assignedTo || "",
-                      witnessedBy: printPreviewData.activity?.details?.witnessedBy || "",
-                      witnessSignatureImg: printPreviewData.activity?.details?.witnessSignature || undefined,
-                      checkedBy: "HERNAN TALAVERA",
-                      finalDecision: "",
-                    }}
-                  />
+               {printPreviewData?.activity?.type === "meter_test" || printPreviewData?.task?.type === "meter_test" ? (
+                 <PrintableMeterTest
+                   data={{
+                     jobOrderNumber: printPreviewData?.task?.joNumber || printPreviewData?.task?.id || "",
+                     accountName: printPreviewData?.activity?.details?.testAccountName || printPreviewData?.task?.accountName || "",
+                     accountNumber: printPreviewData?.activity?.details?.accountNumber || printPreviewData?.task?.accountNumber || "",
+                     date: (printPreviewData?.activity?.date && !isNaN(new Date(printPreviewData.activity.date).getTime())) ? new Date(printPreviewData.activity.date).toLocaleDateString() : (printPreviewData?.task?.date ? new Date(printPreviewData.task.date).toLocaleDateString() : new Date().toLocaleDateString()),
+                     projectAddress: `${printPreviewData?.activity?.siteOrWell || printPreviewData?.activity?.area || printPreviewData?.task?.siteOrWell || printPreviewData?.task?.area || ""} ${printPreviewData?.activity?.blockLot ? "- " + printPreviewData.activity.blockLot : ""}`,
+                     meterBrand: printPreviewData?.activity?.details?.meterBrand || "",
+                     meterSerialNumber: printPreviewData?.activity?.details?.meterSerialNumber || "",
+                     meterSize: printPreviewData?.activity?.details?.meterSize || "",
+                     volumeOfWater: Number(printPreviewData?.activity?.details?.volumeOfWater || 30),
+                     reading1_init: printPreviewData?.activity?.details?.currentReading !== undefined && printPreviewData?.activity?.details?.currentReading !== "" ? Number(printPreviewData.activity.details.currentReading) : undefined,
+                     reading1_final: printPreviewData?.activity?.details?.reading1 !== undefined && printPreviewData?.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity.details.reading1) : undefined,
+                     reading2_init: printPreviewData?.activity?.details?.reading1 !== undefined && printPreviewData?.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity.details.reading1) : undefined,
+                     reading2_final: printPreviewData?.activity?.details?.reading2 !== undefined && printPreviewData?.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity.details.reading2) : undefined,
+                     reading3_init: printPreviewData?.activity?.details?.reading2 !== undefined && printPreviewData?.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity.details.reading2) : undefined,
+                     reading3_final: printPreviewData?.activity?.details?.reading3 !== undefined && printPreviewData?.activity?.details?.reading3 !== "" ? Number(printPreviewData.activity.details.reading3) : undefined,
+                     error1: printPreviewData?.activity?.details?.error1,
+                     error2: printPreviewData?.activity?.details?.error2,
+                     error3: printPreviewData?.activity?.details?.error3,
+                     avgError: printPreviewData?.activity?.details?.avgError,
+                     testingResults: printPreviewData?.activity?.details?.testingResults || "",
+                     recommendation: printPreviewData?.activity?.details?.recommendation || "",
+                     testedBy: (printPreviewData?.activity?.staff || []).join(", ") || "",
+                     witnessedBy: printPreviewData?.activity?.details?.witnessedBy || "",
+                     witnessSignatureImg: printPreviewData?.activity?.details?.witnessSignature || undefined,
+                     checkedBy: "HERNAN TALAVERA",
+                     finalDecision: "",
+                   }}
+                 />
                ) : (
-                  <PrintableTaskHistory data={printPreviewData} />
+                 <PrintableTaskHistory data={printPreviewData} />
                )}
             </div>
             
