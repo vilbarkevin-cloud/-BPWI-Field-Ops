@@ -1482,7 +1482,7 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
             </div>
 
             {/* Modal Body / Printable Content */}
-            <div className="p-6 overflow-y-auto print:overflow-visible print:p-0">
+            <div className="p-6 overflow-auto bg-gray-100 print:bg-transparent print:overflow-visible print:p-0">
                {(printPreviewData.activity?.type === 'meter_test' || printPreviewData.task?.linkedActivity === 'meter_test' || (printPreviewData.task?.title && printPreviewData.task.title.toLowerCase().includes('meter test'))) ? (
                   <PrintableMeterTest
                     data={{
@@ -1495,26 +1495,18 @@ export function TasksView({ currentUser, currentUid, setActiveTab, onSwitchToAdh
                       meterSerialNumber: printPreviewData.activity?.details?.meterSerialNumber || "",
                       meterSize: printPreviewData.activity?.details?.meterSize || "",
                       volumeOfWater: Number(printPreviewData.activity?.details?.volumeOfWater || 30),
-                      reading1_init: Number(printPreviewData.activity?.details?.currentReading || 0),
-                      reading1_final: Number(printPreviewData.activity?.details?.reading1 || 0),
-                      reading2_init: Number(printPreviewData.activity?.details?.reading1 || 0),
-                      reading2_final: Number(printPreviewData.activity?.details?.reading2 || 0),
-                      reading3_init: Number(printPreviewData.activity?.details?.reading2 || 0),
-                      reading3_final: Number(printPreviewData.activity?.details?.reading3 || 0),
-                      error1: (((Number(printPreviewData.activity?.details?.reading1 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.01) - 1) * 100,
-                      error2: (((Number(printPreviewData.activity?.details?.reading2 || 0) - Number(printPreviewData.activity?.details?.reading1 || 0)) / 0.01) - 1) * 100,
-                      error3: (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.reading2 || 0)) / 0.01) - 1) * 100,
-                      avgError: (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100,
-                      testingResults:
-                        (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
-                          ? "Fast Moving"
-                          : (((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
-                            ? "Slow Moving"
-                            : "Passed",
-                      recommendation:
-                        Math.abs((((Number(printPreviewData.activity?.details?.reading3 || 0) - Number(printPreviewData.activity?.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
-                          ? "Replace"
-                          : "Retain",
+                      reading1_init: printPreviewData.activity?.details?.currentReading !== undefined && printPreviewData.activity?.details?.currentReading !== "" ? Number(printPreviewData.activity?.details?.currentReading) : undefined,
+                      reading1_final: printPreviewData.activity?.details?.reading1 !== undefined && printPreviewData.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity?.details?.reading1) : undefined,
+                      reading2_init: printPreviewData.activity?.details?.reading1 !== undefined && printPreviewData.activity?.details?.reading1 !== "" ? Number(printPreviewData.activity?.details?.reading1) : undefined,
+                      reading2_final: printPreviewData.activity?.details?.reading2 !== undefined && printPreviewData.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity?.details?.reading2) : undefined,
+                      reading3_init: printPreviewData.activity?.details?.reading2 !== undefined && printPreviewData.activity?.details?.reading2 !== "" ? Number(printPreviewData.activity?.details?.reading2) : undefined,
+                      reading3_final: printPreviewData.activity?.details?.reading3 !== undefined && printPreviewData.activity?.details?.reading3 !== "" ? Number(printPreviewData.activity?.details?.reading3) : undefined,
+                      error1: printPreviewData.activity?.details?.error1,
+                      error2: printPreviewData.activity?.details?.error2,
+                      error3: printPreviewData.activity?.details?.error3,
+                      avgError: printPreviewData.activity?.details?.avgError,
+                      testingResults: printPreviewData.activity?.details?.testingResults || "",
+                      recommendation: printPreviewData.activity?.details?.recommendation || "",
                       testedBy: (printPreviewData.activity?.staff || []).join(", ") || printPreviewData.task?.assignedTo || "",
                       witnessedBy: printPreviewData.activity?.details?.witnessedBy || "",
                       witnessSignatureImg: printPreviewData.activity?.details?.witnessSignature || undefined,

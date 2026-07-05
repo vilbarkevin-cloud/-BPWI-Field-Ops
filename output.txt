@@ -1,0 +1,19 @@
+                  </div>
+                </div>
+                
+                <div className="border border-primary/30 rounded-xl p-4 bg-primary/5">
+                  <h4 className="font-semibold text-sm mb-3 text-primary">Newly Captured</h4>
+                  <div className="flex flex-col gap-2 text-sm">
+                    <div>
+                      <span className="text-on-surface-variant text-xs">Contact Number</span>
+                      <p>{conflictModalData.new.contactNumber || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant text-xs">GPS</span>
+                      <p>{conflictModalData.new.gpsPosition ? `${conflictModalData.new.gpsPosition.latitude.toFixed(5)}, ${conflictModalData.new.gpsPosition.longitude.toFixed(5)}` : "N/A"}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 border-t border-outline-variant bg-surface flex justify-end gap-3">

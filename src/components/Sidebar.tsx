@@ -36,6 +36,7 @@ export type Tab =
   | "attendance"
   | "inventory"
   | "customers"
+  | "meter_qa_logs"
   | "trip-tickets"
   | "live-map"
   | "chlorination"
@@ -94,6 +95,11 @@ export function Sidebar({
       id: "customers",
       label: "Customers",
       icon: <Users className="w-4 h-4" />,
+    },
+    {
+      id: "meter_qa_logs",
+      label: "Meter QA Logs",
+      icon: <ClipboardList className="w-4 h-4" />,
     },
     {
       id: "inventory",

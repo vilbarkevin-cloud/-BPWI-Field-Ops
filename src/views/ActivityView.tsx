@@ -346,6 +346,28 @@ export function ActivityView({
   const [meterNature, setMeterNature] = useState<"Old" | "New">("Old");
   const [testNature, setTestNature] = useState<"Re-testing" | "Initial">("Re-testing");
   const [pastMeterBrands, setPastMeterBrands] = useState<string[]>([]);
+  
+  // Computed Calculations for Meter Test
+  const computedTestVol = 10 / 1000; // 0.01 cubic meters
+  const isValidReadings = currentReading !== "" && reading1 !== "" && reading2 !== "" && reading3 !== "";
+  
+  let validCount = 0;
+  let totalRegistered = 0;
+  
+  const err1 = currentReading !== "" && reading1 !== "" ? (((Number(reading1) - Number(currentReading)) / computedTestVol) - 1) * 100 : null;
+  if (err1 !== null) { validCount++; totalRegistered += (Number(reading1) - Number(currentReading)); }
+  
+  const err2 = reading1 !== "" && reading2 !== "" ? (((Number(reading2) - Number(reading1)) / computedTestVol) - 1) * 100 : null;
+  if (err2 !== null) { validCount++; totalRegistered += (Number(reading2) - Number(reading1)); }
+  
+  const err3 = reading2 !== "" && reading3 !== "" ? (((Number(reading3) - Number(reading2)) / computedTestVol) - 1) * 100 : null;
+  if (err3 !== null) { validCount++; totalRegistered += (Number(reading3) - Number(reading2)); }
+
+  const computedAvgErr = validCount > 0 ? ((totalReg => (totalReg - (computedTestVol * validCount)) / (computedTestVol * validCount))(totalRegistered)) * 100 : null;
+  
+  const computedTestingResultString = computedAvgErr !== null ? (Math.abs(computedAvgErr) > 5 ? (computedAvgErr > 5 ? "Fast Moving" : "Slow Moving") : "Passed") : "";
+  const computedRecommendationString = computedAvgErr !== null ? (Math.abs(computedAvgErr) > 5 ? "Replace" : "Retain") : "";
+
 
   const [selectedTripTicketId, setSelectedTripTicketId] = useState("");
   const [vehicleType, setVehicleType] = useState("");
@@ -1008,6 +1030,12 @@ export function ActivityView({
           reading1,
           reading2,
           reading3,
+          error1: err1 !== null ? err1 : undefined,
+          error2: err2 !== null ? err2 : undefined,
+          error3: err3 !== null ? err3 : undefined,
+          avgError: computedAvgErr !== null ? computedAvgErr : undefined,
+          testingResults: computedTestingResultString || meterTestStatus || "",
+          recommendation: computedRecommendationString || (meterNature === "New" ? "Replace" : meterNature === "Old" ? "Retain" : ""),
           meterBrand,
           meterSerialNumber,
           meterNature,
@@ -2748,6 +2776,41 @@ export function ActivityView({
                             />
                           </div>
                           
+                          {/* Live Calculations Summary */}
+                          {(err1 !== null || err2 !== null || err3 !== null) && (
+                            <div className="flex flex-col gap-2 md:col-span-2 mt-2 p-4 bg-surface-container-lowest border border-outline-variant rounded-lg">
+                              <h4 className="font-label-lg text-on-surface font-semibold mb-2">Test Result Calculations</h4>
+                              <div className="grid grid-cols-3 gap-4 mb-3">
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Test 1 % Error</p>
+                                  <p className={`font-bold ${err1 !== null && Math.abs(err1) > 5 ? 'text-error' : 'text-primary'}`}>{err1 !== null ? (err1 > 0 ? '+' : '') + err1.toFixed(2) + '%' : '-'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Test 2 % Error</p>
+                                  <p className={`font-bold ${err2 !== null && Math.abs(err2) > 5 ? 'text-error' : 'text-primary'}`}>{err2 !== null ? (err2 > 0 ? '+' : '') + err2.toFixed(2) + '%' : '-'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Test 3 % Error</p>
+                                  <p className={`font-bold ${err3 !== null && Math.abs(err3) > 5 ? 'text-error' : 'text-primary'}`}>{err3 !== null ? (err3 > 0 ? '+' : '') + err3.toFixed(2) + '%' : '-'}</p>
+                                </div>
+                              </div>
+                              <div className="border-t border-outline-variant/30 pt-3 grid grid-cols-3 gap-4">
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Avg Error</p>
+                                  <p className={`font-bold text-lg ${computedAvgErr !== null && Math.abs(computedAvgErr) > 5 ? 'text-error' : 'text-primary'}`}>{computedAvgErr !== null ? (computedAvgErr > 0 ? '+' : '') + computedAvgErr.toFixed(2) + '%' : '-'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Result</p>
+                                  <p className="font-bold text-on-surface">{computedTestingResultString || '-'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wider">Recommendation</p>
+                                  <p className="font-bold text-on-surface">{computedRecommendationString || '-'}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
                           <div className="flex flex-col gap-xs md:col-span-2 pt-4 border-t border-outline-variant/30 mt-2">
                             <label className="font-label-md text-label-md text-on-surface-variant flex justify-between">
                               <span>Witnessed By (Client Side)</span>
@@ -4195,26 +4258,18 @@ export function ActivityView({
               meterSerialNumber: reprintData.details?.meterSerialNumber || "",
               meterSize: reprintData.details?.meterSize || "",
               volumeOfWater: 30, // 3 x 10
-              reading1_init: Number(reprintData.details?.currentReading || 0),
-              reading1_final: Number(reprintData.details?.reading1 || 0),
-              reading2_init: Number(reprintData.details?.reading1 || 0),
-              reading2_final: Number(reprintData.details?.reading2 || 0),
-              reading3_init: Number(reprintData.details?.reading2 || 0),
-              reading3_final: Number(reprintData.details?.reading3 || 0),
-              error1: (((Number(reprintData.details?.reading1 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.01) - 1) * 100,
-              error2: (((Number(reprintData.details?.reading2 || 0) - Number(reprintData.details?.reading1 || 0)) / 0.01) - 1) * 100,
-              error3: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.reading2 || 0)) / 0.01) - 1) * 100,
-              avgError: (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100,
-              testingResults:
-                (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 > 5
-                  ? "Fast Moving"
-                  : (((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100 < -5
-                    ? "Slow Moving"
-                    : "Passed",
-              recommendation:
-                Math.abs((((Number(reprintData.details?.reading3 || 0) - Number(reprintData.details?.currentReading || 0)) / 0.03) - 1) * 100) > 5
-                  ? "Replace"
-                  : "Retain",
+              reading1_init: reprintData.details?.currentReading !== undefined && reprintData.details?.currentReading !== "" ? Number(reprintData.details?.currentReading) : undefined,
+              reading1_final: reprintData.details?.reading1 !== undefined && reprintData.details?.reading1 !== "" ? Number(reprintData.details?.reading1) : undefined,
+              reading2_init: reprintData.details?.reading1 !== undefined && reprintData.details?.reading1 !== "" ? Number(reprintData.details?.reading1) : undefined,
+              reading2_final: reprintData.details?.reading2 !== undefined && reprintData.details?.reading2 !== "" ? Number(reprintData.details?.reading2) : undefined,
+              reading3_init: reprintData.details?.reading2 !== undefined && reprintData.details?.reading2 !== "" ? Number(reprintData.details?.reading2) : undefined,
+              reading3_final: reprintData.details?.reading3 !== undefined && reprintData.details?.reading3 !== "" ? Number(reprintData.details?.reading3) : undefined,
+              error1: undefined,
+              error2: undefined,
+              error3: undefined,
+              avgError: undefined,
+              testingResults: "",
+              recommendation: "",
               testedBy: (reprintData.staff || []).join(", "),
               witnessedBy: reprintData.details?.witnessedBy || "",
               witnessSignatureImg: reprintData.details?.witnessSignature || undefined,
@@ -4232,31 +4287,18 @@ export function ActivityView({
               meterSerialNumber: meterSerialNumber,
               meterSize: "",
               volumeOfWater: 30, // 3 x 10
-              reading1_init: Number(currentReading),
-              reading1_final: Number(reading1),
-              reading2_init: Number(reading1),
-              reading2_final: Number(reading2),
-              reading3_init: Number(reading2),
-              reading3_final: Number(reading3),
-              error1: (((Number(reading1) - Number(currentReading)) / 0.01) - 1) * 100,
-              error2: (((Number(reading2) - Number(reading1)) / 0.01) - 1) * 100,
-              error3: (((Number(reading3) - Number(reading2)) / 0.01) - 1) * 100,
-              avgError: (((Number(reading3) - Number(currentReading)) / 0.03) - 1) * 100,
-              testingResults:
-                (((Number(reading3) - Number(currentReading)) / 0.03) - 1) * 100 >
-                5
-                  ? "Fast Moving"
-                  : (((Number(reading3) - Number(currentReading)) / 0.03) - 1) *
-                        100 <
-                      -5
-                    ? "Slow Moving"
-                    : "Passed",
-              recommendation:
-                Math.abs(
-                  (((Number(reading3) - Number(currentReading)) / 0.03) - 1) * 100,
-                ) > 5
-                  ? "Replace"
-                  : "Retain",
+              reading1_init: currentReading !== undefined && currentReading !== "" ? Number(currentReading) : undefined,
+              reading1_final: reading1 !== undefined && reading1 !== "" ? Number(reading1) : undefined,
+              reading2_init: reading1 !== undefined && reading1 !== "" ? Number(reading1) : undefined,
+              reading2_final: reading2 !== undefined && reading2 !== "" ? Number(reading2) : undefined,
+              reading3_init: reading2 !== undefined && reading2 !== "" ? Number(reading2) : undefined,
+              reading3_final: reading3 !== undefined && reading3 !== "" ? Number(reading3) : undefined,
+              error1: err1 !== null ? err1 : undefined,
+              error2: err2 !== null ? err2 : undefined,
+              error3: err3 !== null ? err3 : undefined,
+              avgError: computedAvgErr !== null ? computedAvgErr : undefined,
+              testingResults: computedTestingResultString || meterTestStatus || "",
+              recommendation: computedRecommendationString || (meterNature === "New" ? "Replace" : meterNature === "Old" ? "Retain" : ""),
               testedBy: selectedStaff.join(", "),
               witnessedBy: witnessedBy,
               witnessSignatureImg: witnessSignature || undefined,
