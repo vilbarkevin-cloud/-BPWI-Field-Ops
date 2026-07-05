@@ -7,6 +7,7 @@ import fs from "fs";
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
   app.use(express.json({ limit: "50mb" }));
 
   // API route for Gemini Auto-Classification
@@ -19,6 +20,7 @@ async function startServer() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
+
       const prompt = `You are a maintenance incident auto-classifier for a water utility.
 Please analyze the provided image and/or summary of the issue:
 Summary: ${summary || "No summary provided"}
@@ -28,10 +30,12 @@ Classify the incident based strictly on the following parameters:
 - severity: "critical" | "high" | "medium" | "low"
 
 Return ONLY a JSON response in this exact format, with no markdown formatting or extra text:
-{"type": "leak", "severity": "medium", "suggestedAction": "brief suggestion"}`;
+{"type": "leak", "severity": "medium", "suggestedAction": "brief suggestion"}
+`;
 
       let response;
       if (imageBase64) {
+        // base64 contains the data url like data:image/jpeg;base64,...
         const match = imageBase64.match(/^data:(image\/[a-z]+);base64,(.+)$/);
         if (match) {
           const mimeType = match[1];
@@ -49,7 +53,7 @@ Return ONLY a JSON response in this exact format, with no markdown formatting or
             ],
           });
         }
-      }
+      } 
       
       if (!response) {
         response = await ai.models.generateContent({
@@ -61,6 +65,7 @@ Return ONLY a JSON response in this exact format, with no markdown formatting or
       const text = response.text || "{}";
       const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
       const result = JSON.parse(cleaned);
+
       res.json(result);
     } catch (err) {
       console.error("Gemini classification error:", err);
